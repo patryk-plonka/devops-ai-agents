@@ -1,0 +1,631 @@
+{
+  "schema_version": 1,
+  "run_id": "synthetic-run",
+  "revision": 9,
+  "tool_version": "test",
+  "started_at": "2026-11-06T10:00:00Z",
+  "updated_at": "2026-11-06T10:00:00Z",
+  "ended_at": "2026-11-06T10:00:00Z",
+  "outcome": "completed",
+  "coverage": "incomplete",
+  "requested_scope": "Synthetic subscription",
+  "scope": {
+    "subscription_id": "11111111-1111-1111-1111-111111111111",
+    "name": "Synthetic subscription",
+    "tenant_id": "22222222-2222-2222-2222-222222222222",
+    "cloud": "AzureCloud"
+  },
+  "sources": {
+    "advisor": {
+      "status": "not_checked",
+      "reason": "not_implemented_in_s01",
+      "pages": 0,
+      "rejected_records": 0
+    },
+    "azure_monitor": {
+      "status": "not_checked",
+      "reason": "not_implemented_in_s01",
+      "pages": 0,
+      "rejected_records": 0
+    },
+    "inventory": {
+      "status": "completed",
+      "pages": 1,
+      "rejected_records": 0
+    },
+    "resource_health": {
+      "status": "completed",
+      "pages": 1,
+      "rejected_records": 0
+    },
+    "service_health": {
+      "status": "not_checked",
+      "reason": "not_implemented_in_s01",
+      "pages": 0,
+      "rejected_records": 0
+    }
+  },
+  "diagnostics": [],
+  "redactions": 8,
+  "resources": [
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-00",
+      "name": "vm-00",
+      "type": "Microsoft.Compute/virtualMachines",
+      "resource_group": "g",
+      "location": "westeurope",
+      "tags": {
+        "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+        "owner": "consultant",
+        "password": "[REDACTED]"
+      },
+      "evidence_ids": [
+        "ev-1082bbb061a34421a52e175289125f32997d06ca5fa89c6dbdf32d788d0f2d09"
+      ]
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-01",
+      "name": "vm-01",
+      "type": "Microsoft.Compute/virtualMachines",
+      "resource_group": "g",
+      "location": "westeurope",
+      "tags": {
+        "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+        "owner": "consultant",
+        "password": "[REDACTED]"
+      },
+      "evidence_ids": [
+        "ev-6892a1927b2d1a542b6418a192e1168f8f311b16c431797174df42e1bcf0aa04"
+      ]
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-02",
+      "name": "vm-02",
+      "type": "Microsoft.Compute/virtualMachines",
+      "resource_group": "g",
+      "location": "westeurope",
+      "tags": {
+        "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+        "owner": "consultant",
+        "password": "[REDACTED]"
+      },
+      "evidence_ids": [
+        "ev-349a0fd1912c098e85e03d418c1830ae6bacceef3e354c729a1b040764008254"
+      ]
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-03",
+      "name": "vm-03",
+      "type": "Microsoft.Compute/virtualMachines",
+      "resource_group": "g",
+      "location": "westeurope",
+      "tags": {
+        "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+        "owner": "consultant",
+        "password": "[REDACTED]"
+      },
+      "evidence_ids": [
+        "ev-649d8c2628b5fc2112ce76a15f3c9bc1bb94b9602a7aedf19ef3f80679e12e67"
+      ]
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-04",
+      "name": "vm-04",
+      "type": "Microsoft.Compute/virtualMachines",
+      "resource_group": "g",
+      "location": "westeurope",
+      "tags": {
+        "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+        "owner": "consultant",
+        "password": "[REDACTED]"
+      },
+      "evidence_ids": [
+        "ev-861d36581cadbaacd8ca9d71822933c780b289d110ecf423a3e2b15e8770c141"
+      ]
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-05",
+      "name": "vm-05",
+      "type": "Microsoft.Compute/virtualMachines",
+      "resource_group": "g",
+      "location": "westeurope",
+      "tags": {
+        "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+        "owner": "consultant",
+        "password": "[REDACTED]"
+      },
+      "evidence_ids": [
+        "ev-b1ef467e128f5fdf959b3a5314603032934ebb94033d57a471377ee9e39f1947"
+      ]
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-06",
+      "name": "vm-06",
+      "type": "Microsoft.Compute/virtualMachines",
+      "resource_group": "g",
+      "location": "westeurope",
+      "tags": {
+        "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+        "owner": "consultant",
+        "password": "[REDACTED]"
+      },
+      "evidence_ids": [
+        "ev-e5302b8a48b87512955e33253a7176978dcec675105c26e3b4a457191329d9e4"
+      ]
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-07",
+      "name": "vm-07",
+      "type": "Microsoft.Compute/virtualMachines",
+      "resource_group": "g",
+      "location": "westeurope",
+      "tags": {
+        "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+        "owner": "consultant",
+        "password": "[REDACTED]"
+      },
+      "evidence_ids": [
+        "ev-c6b6d591f8b63c6c8c9f4e647f2acea171b1b82b55e1496c8261427705aae37a"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev-1082bbb061a34421a52e175289125f32997d06ca5fa89c6dbdf32d788d0f2d09",
+      "source": "inventory",
+      "operation": "Resources.List",
+      "api_version": "2025-04-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-00",
+      "kind": "inventory",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "resource": {
+        "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-00",
+        "name": "vm-00",
+        "type": "Microsoft.Compute/virtualMachines",
+        "resource_group": "g",
+        "location": "westeurope",
+        "tags": {
+          "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+          "owner": "consultant",
+          "password": "[REDACTED]"
+        }
+      }
+    },
+    {
+      "id": "ev-6892a1927b2d1a542b6418a192e1168f8f311b16c431797174df42e1bcf0aa04",
+      "source": "inventory",
+      "operation": "Resources.List",
+      "api_version": "2025-04-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-01",
+      "kind": "inventory",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "resource": {
+        "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-01",
+        "name": "vm-01",
+        "type": "Microsoft.Compute/virtualMachines",
+        "resource_group": "g",
+        "location": "westeurope",
+        "tags": {
+          "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+          "owner": "consultant",
+          "password": "[REDACTED]"
+        }
+      }
+    },
+    {
+      "id": "ev-349a0fd1912c098e85e03d418c1830ae6bacceef3e354c729a1b040764008254",
+      "source": "inventory",
+      "operation": "Resources.List",
+      "api_version": "2025-04-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-02",
+      "kind": "inventory",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "resource": {
+        "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-02",
+        "name": "vm-02",
+        "type": "Microsoft.Compute/virtualMachines",
+        "resource_group": "g",
+        "location": "westeurope",
+        "tags": {
+          "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+          "owner": "consultant",
+          "password": "[REDACTED]"
+        }
+      }
+    },
+    {
+      "id": "ev-649d8c2628b5fc2112ce76a15f3c9bc1bb94b9602a7aedf19ef3f80679e12e67",
+      "source": "inventory",
+      "operation": "Resources.List",
+      "api_version": "2025-04-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-03",
+      "kind": "inventory",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "resource": {
+        "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-03",
+        "name": "vm-03",
+        "type": "Microsoft.Compute/virtualMachines",
+        "resource_group": "g",
+        "location": "westeurope",
+        "tags": {
+          "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+          "owner": "consultant",
+          "password": "[REDACTED]"
+        }
+      }
+    },
+    {
+      "id": "ev-861d36581cadbaacd8ca9d71822933c780b289d110ecf423a3e2b15e8770c141",
+      "source": "inventory",
+      "operation": "Resources.List",
+      "api_version": "2025-04-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-04",
+      "kind": "inventory",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "resource": {
+        "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-04",
+        "name": "vm-04",
+        "type": "Microsoft.Compute/virtualMachines",
+        "resource_group": "g",
+        "location": "westeurope",
+        "tags": {
+          "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+          "owner": "consultant",
+          "password": "[REDACTED]"
+        }
+      }
+    },
+    {
+      "id": "ev-b1ef467e128f5fdf959b3a5314603032934ebb94033d57a471377ee9e39f1947",
+      "source": "inventory",
+      "operation": "Resources.List",
+      "api_version": "2025-04-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-05",
+      "kind": "inventory",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "resource": {
+        "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-05",
+        "name": "vm-05",
+        "type": "Microsoft.Compute/virtualMachines",
+        "resource_group": "g",
+        "location": "westeurope",
+        "tags": {
+          "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+          "owner": "consultant",
+          "password": "[REDACTED]"
+        }
+      }
+    },
+    {
+      "id": "ev-e5302b8a48b87512955e33253a7176978dcec675105c26e3b4a457191329d9e4",
+      "source": "inventory",
+      "operation": "Resources.List",
+      "api_version": "2025-04-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-06",
+      "kind": "inventory",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "resource": {
+        "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-06",
+        "name": "vm-06",
+        "type": "Microsoft.Compute/virtualMachines",
+        "resource_group": "g",
+        "location": "westeurope",
+        "tags": {
+          "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+          "owner": "consultant",
+          "password": "[REDACTED]"
+        }
+      }
+    },
+    {
+      "id": "ev-c6b6d591f8b63c6c8c9f4e647f2acea171b1b82b55e1496c8261427705aae37a",
+      "source": "inventory",
+      "operation": "Resources.List",
+      "api_version": "2025-04-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-07",
+      "kind": "inventory",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "resource": {
+        "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-07",
+        "name": "vm-07",
+        "type": "Microsoft.Compute/virtualMachines",
+        "resource_group": "g",
+        "location": "westeurope",
+        "tags": {
+          "display": "\u003cb\u003ex\u003c/b\u003e|[click](https://example.test)# heading",
+          "owner": "consultant",
+          "password": "[REDACTED]"
+        }
+      }
+    },
+    {
+      "id": "ev-f03965cda921d638ce23af0188fbe799a5529cce363138ee67c56a1be9aa3598",
+      "source": "resource_health",
+      "operation": "AvailabilityStatuses.ListBySubscriptionId",
+      "api_version": "2025-05-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-00",
+      "status_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-00/providers/Microsoft.ResourceHealth/availabilityStatuses/current",
+      "status_role": "current",
+      "kind": "availability",
+      "state": "Available",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "source_reported_at": "2026-11-06T10:00:00Z"
+    },
+    {
+      "id": "ev-278aafd423da08b341545924b01d68c7911227159e60bf8f67ef1c67355a01b5",
+      "source": "resource_health",
+      "operation": "AvailabilityStatuses.ListBySubscriptionId",
+      "api_version": "2025-05-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-01",
+      "status_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-01/providers/Microsoft.ResourceHealth/availabilityStatuses/current",
+      "status_role": "current",
+      "kind": "availability",
+      "state": "Unavailable",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "source_reported_at": "2026-11-06T10:00:00Z"
+    },
+    {
+      "id": "ev-a9533034b28a447268852f37334b30d3b05b391ec8548df953164f42739dc4c4",
+      "source": "resource_health",
+      "operation": "AvailabilityStatuses.ListBySubscriptionId",
+      "api_version": "2025-05-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-02",
+      "status_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-02/providers/Microsoft.ResourceHealth/availabilityStatuses/current",
+      "status_role": "current",
+      "kind": "availability",
+      "state": "Degraded",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "source_reported_at": "2026-11-06T10:00:00Z"
+    },
+    {
+      "id": "ev-c2451506df20a6e334ae1e5a3dbe168c6cde81a5a8d0c0809e4629713e286dd9",
+      "source": "resource_health",
+      "operation": "AvailabilityStatuses.ListBySubscriptionId",
+      "api_version": "2025-05-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-03",
+      "status_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-03/providers/Microsoft.ResourceHealth/availabilityStatuses/current",
+      "status_role": "current",
+      "kind": "availability",
+      "state": "Unknown",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "source_reported_at": "2026-11-06T10:00:00Z"
+    },
+    {
+      "id": "ev-9bfec019efc4d146cc2faf32320252eb6a3212a9e47ed932c5b2c3ffa450d2ef",
+      "source": "resource_health",
+      "operation": "AvailabilityStatuses.ListBySubscriptionId",
+      "api_version": "2025-05-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-04",
+      "status_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-04/providers/Microsoft.ResourceHealth/availabilityStatuses/current",
+      "status_role": "current",
+      "event_id": "event-123",
+      "kind": "event",
+      "state": "undetermined",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "source_reported_at": "2026-11-06T10:00:00Z",
+      "source_occurred_at": "2026-11-06T10:00:00Z"
+    },
+    {
+      "id": "ev-96c7408b8ad1e85da9cd45c237d7a5aefea21fcca68b7f9bdceb3bb72261978f",
+      "source": "resource_health",
+      "operation": "AvailabilityStatuses.ListBySubscriptionId",
+      "api_version": "2025-05-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-06",
+      "status_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-06/providers/Microsoft.ResourceHealth/availabilityStatuses/2026-11-05",
+      "status_role": "historical",
+      "kind": "availability",
+      "state": "Available",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "source_reported_at": "2026-11-06T10:00:00Z"
+    },
+    {
+      "id": "ev-218db3fe554d31d7e5a033b795252a7876d9049c17a23f9f8b39bf33b2aa55bf",
+      "source": "resource_health",
+      "operation": "AvailabilityStatuses.ListBySubscriptionId",
+      "api_version": "2025-05-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-07",
+      "status_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-07/providers/Microsoft.ResourceHealth/availabilityStatuses/current",
+      "status_role": "current",
+      "kind": "availability",
+      "state": "Available",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "source_reported_at": "2026-11-06T10:00:00Z"
+    },
+    {
+      "id": "ev-bc13f9c21702c4f955b3d789dc73bf5f3be3c4170f76e6c8cab70e5874d61443",
+      "source": "resource_health",
+      "operation": "AvailabilityStatuses.ListBySubscriptionId",
+      "api_version": "2025-05-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-07",
+      "status_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-07/providers/Microsoft.ResourceHealth/availabilityStatuses/current",
+      "status_role": "current",
+      "kind": "availability",
+      "state": "Unavailable",
+      "collected_at": "2026-11-06T10:00:00Z",
+      "source_reported_at": "2026-11-06T10:00:00Z"
+    }
+  ],
+  "observations": [
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-00",
+      "state": "Available",
+      "in_inventory": true,
+      "evidence_ids": [
+        "ev-f03965cda921d638ce23af0188fbe799a5529cce363138ee67c56a1be9aa3598"
+      ]
+    },
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-01",
+      "state": "Unavailable",
+      "in_inventory": true,
+      "evidence_ids": [
+        "ev-278aafd423da08b341545924b01d68c7911227159e60bf8f67ef1c67355a01b5"
+      ]
+    },
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-02",
+      "state": "Degraded",
+      "in_inventory": true,
+      "evidence_ids": [
+        "ev-a9533034b28a447268852f37334b30d3b05b391ec8548df953164f42739dc4c4"
+      ]
+    },
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-03",
+      "state": "Unknown",
+      "in_inventory": true,
+      "evidence_ids": [
+        "ev-c2451506df20a6e334ae1e5a3dbe168c6cde81a5a8d0c0809e4629713e286dd9"
+      ]
+    },
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-04",
+      "state": "undetermined",
+      "in_inventory": true,
+      "evidence_ids": [
+        "ev-9bfec019efc4d146cc2faf32320252eb6a3212a9e47ed932c5b2c3ffa450d2ef"
+      ]
+    },
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-05",
+      "state": "not_checked",
+      "in_inventory": true,
+      "evidence_ids": []
+    },
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-06",
+      "state": "undetermined",
+      "in_inventory": true,
+      "evidence_ids": [
+        "ev-96c7408b8ad1e85da9cd45c237d7a5aefea21fcca68b7f9bdceb3bb72261978f"
+      ]
+    },
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-07",
+      "state": "undetermined",
+      "in_inventory": true,
+      "evidence_ids": [
+        "ev-218db3fe554d31d7e5a033b795252a7876d9049c17a23f9f8b39bf33b2aa55bf",
+        "ev-bc13f9c21702c4f955b3d789dc73bf5f3be3c4170f76e6c8cab70e5874d61443"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "finding-ec71331ac506b315bc44950d8ba87378f703f52d20e5bfaf2a7db55054f45004",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-04",
+      "category": "resource_health_event",
+      "title": "Resource Health impacting event; current state undetermined",
+      "evidence_ids": [
+        "ev-9bfec019efc4d146cc2faf32320252eb6a3212a9e47ed932c5b2c3ffa450d2ef"
+      ]
+    },
+    {
+      "id": "finding-091df1ca9c770f25d2611b5b77a8f3fd38c04fc985295a507111d3bcdaa9cb98",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-01",
+      "category": "resource_health_issue",
+      "title": "Resource Health reported Unavailable",
+      "evidence_ids": [
+        "ev-278aafd423da08b341545924b01d68c7911227159e60bf8f67ef1c67355a01b5"
+      ]
+    },
+    {
+      "id": "finding-777ce2ee752256bbea3a9925aa70ea08b9133ba6cda709a28ecaec75fce4d12f",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-02",
+      "category": "resource_health_issue",
+      "title": "Resource Health reported Degraded",
+      "evidence_ids": [
+        "ev-a9533034b28a447268852f37334b30d3b05b391ec8548df953164f42739dc4c4"
+      ]
+    },
+    {
+      "id": "finding-76f110baec274dcd65a557bff7b985fe4e9080be76b2d5ccc1b0fb51ed43dda5",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-07",
+      "category": "resource_health_issue",
+      "title": "Resource Health reported Unavailable",
+      "evidence_ids": [
+        "ev-bc13f9c21702c4f955b3d789dc73bf5f3be3c4170f76e6c8cab70e5874d61443"
+      ]
+    }
+  ],
+  "coverage_gaps": [
+    {
+      "source": "advisor",
+      "reason": "not_implemented_in_s01"
+    },
+    {
+      "source": "azure_monitor",
+      "reason": "not_implemented_in_s01"
+    },
+    {
+      "source": "resource_health",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-03",
+      "reason": "source_unknown",
+      "evidence_ids": [
+        "ev-c2451506df20a6e334ae1e5a3dbe168c6cde81a5a8d0c0809e4629713e286dd9"
+      ]
+    },
+    {
+      "source": "resource_health",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-04",
+      "reason": "undetermined_health_evidence",
+      "evidence_ids": [
+        "ev-9bfec019efc4d146cc2faf32320252eb6a3212a9e47ed932c5b2c3ffa450d2ef"
+      ]
+    },
+    {
+      "source": "resource_health",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-05",
+      "reason": "missing_health_evidence",
+      "evidence_ids": [
+        "ev-b1ef467e128f5fdf959b3a5314603032934ebb94033d57a471377ee9e39f1947"
+      ]
+    },
+    {
+      "source": "resource_health",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-06",
+      "reason": "historical_health_evidence",
+      "evidence_ids": [
+        "ev-96c7408b8ad1e85da9cd45c237d7a5aefea21fcca68b7f9bdceb3bb72261978f"
+      ]
+    },
+    {
+      "source": "resource_health",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-06",
+      "reason": "missing_current_health_evidence",
+      "evidence_ids": [
+        "ev-96c7408b8ad1e85da9cd45c237d7a5aefea21fcca68b7f9bdceb3bb72261978f"
+      ]
+    },
+    {
+      "source": "resource_health",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-06",
+      "reason": "undetermined_health_evidence",
+      "evidence_ids": [
+        "ev-96c7408b8ad1e85da9cd45c237d7a5aefea21fcca68b7f9bdceb3bb72261978f"
+      ]
+    },
+    {
+      "source": "resource_health",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-07",
+      "reason": "conflicting_health_evidence",
+      "evidence_ids": [
+        "ev-218db3fe554d31d7e5a033b795252a7876d9049c17a23f9f8b39bf33b2aa55bf",
+        "ev-bc13f9c21702c4f955b3d789dc73bf5f3be3c4170f76e6c8cab70e5874d61443"
+      ]
+    },
+    {
+      "source": "resource_health",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm-07",
+      "reason": "undetermined_health_evidence",
+      "evidence_ids": [
+        "ev-218db3fe554d31d7e5a033b795252a7876d9049c17a23f9f8b39bf33b2aa55bf",
+        "ev-bc13f9c21702c4f955b3d789dc73bf5f3be3c4170f76e6c8cab70e5874d61443"
+      ]
+    },
+    {
+      "source": "service_health",
+      "reason": "not_implemented_in_s01"
+    }
+  ]
+}
