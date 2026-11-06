@@ -1,10 +1,10 @@
 ---
 change_id: subscription-resource-health-report
 title: Inspect one subscription's resource health
-status: impl_reviewed
+status: archived
 created: 2026-11-05
 updated: 2026-11-06
-archived_at: null
+archived_at: 2026-11-06T14:10:56Z
 ---
 
 ## Notes

@@ -3,7 +3,7 @@ project: "AI Agents for Devops"
 version: 1
 status: draft
 created: 2026-11-02
-updated: 2026-11-02
+updated: 2026-11-06
 prd_version: 1
 main_goal: quality
 top_blocker: none
@@ -33,7 +33,7 @@ The user confirmed no known blocker after stack selection and bootstrap. Confirm
 
 | ID | Change ID | Outcome (user can …) | Prerequisites | PRD refs | Status |
 |---|---|---|---|---|---|
-| S-01 | subscription-resource-health-report | Consultant can select one subscription with the existing work identity and receive a scoped Resource Health Markdown report or an explicit access failure. | — | US-01, FR-001, FR-002, FR-003, FR-004 | ready |
+| S-01 | subscription-resource-health-report | Consultant can select one subscription with the existing work identity and receive a scoped Resource Health Markdown report or an explicit access failure. | — | US-01, FR-001, FR-002, FR-003, FR-004 | done |
 | S-02 | active-alert-report | Consultant can see relevant Service Health events and existing Azure Monitor metric/log alerts in the subscription report. | S-01 | US-01, FR-002, FR-003, FR-004 | proposed |
 | S-03 | advisor-recommendation-report | Consultant can review existing Azure Advisor recommendations and supporting evidence in the subscription report. | S-01 | US-01, FR-002, FR-003, FR-004 | proposed |
 | S-04 | complete-health-report | Consultant can run one check and review a consolidated Markdown report of active alerts, existing recommendations, evidence-backed OK resources, and explicit coverage gaps. | S-02, S-03 | US-01, FR-002, FR-003, FR-004 | proposed |
@@ -74,7 +74,7 @@ Coverage and evidence rules apply from the first slice. Complete resource classi
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Missing access or incomplete collection could look like a healthy result; make those states explicit in the first usable report.
-- **Status:** ready
+- **Status:** done
 
 Resolve subscription IDs and names, prompt on ambiguous names, and make denied subscription access visibly unsuccessful. Show observed resource-health findings with traceable, privacy-filtered evidence. Identify resources or checks whose evidence is missing, unsupported, inaccessible, or failed. Label this as an intentionally incomplete report: the other three agreed sources are not checked yet, so source-specific healthy observations do not establish overall OK. Introduce the minimum local and automated verification path, read-only enforcement, and useful failure diagnostics with this flow.
 
@@ -164,3 +164,5 @@ The PRD contains no open product questions.
 - **Client/team access and a web interface** — Why parked: PRD Non-Goals; the consultant is the sole operator of the local CLI.
 
 ## Done
+
+- **S-01: Consultant can select one subscription with the existing work identity and receive a scoped Resource Health Markdown report or an explicit access failure.** — Archived 2026-11-06 → `context/archive/2026-11-05-subscription-resource-health-report/`. Lesson: —.
