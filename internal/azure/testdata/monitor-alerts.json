@@ -1,0 +1,42 @@
+{
+  "nextLink": "https://management.azure.com:443/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.AlertsManagement/alerts?api-version=2019-03-01&timeRange=30d&ctoken=monitor-token-canary%2B%2F%3D%23opaque",
+  "value": [
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.insights/components/app/providers/Microsoft.AlertsManagement/alerts/synthetic-log",
+      "type": "Microsoft.AlertsManagement/alerts",
+      "name": "alert-name-canary",
+      "properties": {
+        "essentials": {
+          "severity": "Sev3",
+          "signalType": "Log",
+          "alertState": "Acknowledged",
+          "monitorCondition": "Fired",
+          "targetResource": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.insights/components/app",
+          "startDateTime": "2026-11-13T10:00:00Z",
+          "lastModifiedDateTime": "2026-11-14T12:00:00Z",
+          "lastModifiedUserName": "username-canary",
+          "description": "description-canary",
+          "alertRule": "https://example.invalid/rule-canary",
+          "actionStatus": {"isSuppressed": false}
+        },
+        "context": {"SearchQuery": "query-canary", "SearchResults": "results-canary"},
+        "egressConfig": {"secret": "egress-canary"}
+      }
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.AlertsManagement/alerts/synthetic-metric",
+      "properties": {
+        "essentials": {
+          "signalType": "Metric",
+          "monitorCondition": "Fired",
+          "alertState": "Closed",
+          "severity": "Sev1",
+          "targetResource": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm",
+          "startDateTime": "2026-11-13T10:00:00Z",
+          "lastModifiedDateTime": "2026-11-14T12:00:00Z",
+          "actionStatus": {"isSuppressed": true}
+        }
+      }
+    }
+  ]
+}

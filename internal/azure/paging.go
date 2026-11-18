@@ -11,6 +11,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/patryk-plonka/devops-ai-agents/internal/health"
 )
 
 const maxPages = 10000
@@ -18,11 +19,13 @@ const maxPages = 10000
 // Collection permits dependency injection only at Go boundaries, never via a
 // production endpoint/token flag. Zero values select the fixed operational bounds.
 type Collection struct {
-	Base       http.RoundTripper
-	Credential func(string) (azcore.TokenCredential, error)
-	timeout    time.Duration
-	pageLimit  int
-	retryDelay time.Duration
+	// ServiceHealthQuery must be the fixed policy derived from the run start.
+	ServiceHealthQuery health.SourceQuery
+	Base               http.RoundTripper
+	Credential         func(string) (azcore.TokenCredential, error)
+	timeout            time.Duration
+	pageLimit          int
+	retryDelay         time.Duration
 }
 
 func (c Collection) options(subscription, route string) (*arm.ClientOptions, azcore.TokenCredential, error) {
@@ -32,7 +35,7 @@ func (c Collection) options(subscription, route string) (*arm.ClientOptions, azc
 	}
 	credential, err := newCredential(subscription)
 	options := &arm.ClientOptions{DisableRPRegistration: true}
-	options.Transport = collectionTransport{ReadTransport{Subscription: subscription, Route: route, Base: c.Base}}
+	options.Transport = collectionTransport{ReadTransport{Subscription: subscription, Route: route, QueryStartTime: c.ServiceHealthQuery.QueryStartTime, Base: c.Base}}
 	options.Retry.MaxRetries = 3
 	options.Retry.RetryDelay = c.retryDelay
 	// A nanosecond cap keeps retry tests controlled. This SDK version treats a
@@ -101,13 +104,13 @@ func collectionFailure(err error) error {
 
 // Validate continuations before passing them to the authenticated SDK pipeline.
 // Restrict them to the same operation, not just any approved subscription read.
-func continuation(link, subscription, route string) (string, error) {
+func continuation(link, subscription, route, queryStartTime string) (string, error) {
 	u, err := url.Parse(link)
 	if err != nil {
 		return "", &boundaryError{"unsafe_continuation"}
 	}
 	req := &http.Request{Method: http.MethodGet, URL: u}
-	if !allowedRequest(req, subscription, route) {
+	if !allowedRequest(req, subscription, route, queryStartTime) {
 		return "", &boundaryError{"unsafe_continuation"}
 	}
 	q, _ := url.ParseQuery(u.RawQuery)
@@ -115,22 +118,36 @@ func continuation(link, subscription, route string) (string, error) {
 		q.Set("$skiptoken", q.Get("$skipToken"))
 		q.Del("$skipToken")
 	}
+	// Optional repeated fixed options and the explicit default port do not make
+	// an operational continuation a new page identity.
+	if route == serviceHealthRoute && q.Has("$skipToken") {
+		q.Del("queryStartTime")
+	}
+	if route == monitorRoute {
+		u.Host = "management.azure.com"
+		if q.Has("ctoken") {
+			for key := range q {
+				if key != "api-version" && key != "ctoken" {
+					q.Del(key)
+				}
+			}
+		}
+	}
 	// Canonical ordering detects repeated equivalent URLs without recording tokens.
 	u.RawQuery = q.Encode()
 	u.Path = strings.ToLower(u.Path)
 	return u.String(), nil
 }
 
-func pages[T any](ctx context.Context, c Collection, subscription, route string, pager *runtime.Pager[T], accept func(T) (*string, error)) error {
+func pages[T any](ctx context.Context, c Collection, subscription, route, initialURL string, pager *runtime.Pager[T], accept func(T) (*string, error)) error {
 	limit := c.pageLimit
 	if limit == 0 {
 		limit = maxPages
 	}
-	path, version := "/resources", "2025-04-01"
-	if route == healthRoute {
-		path, version = "/providers/Microsoft.ResourceHealth/availabilityStatuses", "2025-05-01"
+	initial, err := continuation(initialURL, subscription, route, c.ServiceHealthQuery.QueryStartTime)
+	if err != nil {
+		return err
 	}
-	initial, _ := continuation("https://management.azure.com/subscriptions/"+subscription+path+"?api-version="+version, subscription, route)
 	seen := map[string]bool{initial: true}
 	for number := 0; pager.More(); number++ {
 		if ctx.Err() != nil {
@@ -158,7 +175,7 @@ func pages[T any](ctx context.Context, c Collection, subscription, route string,
 			return err
 		}
 		if next != nil && *next != "" {
-			key, err := continuation(*next, subscription, route)
+			key, err := continuation(*next, subscription, route, c.ServiceHealthQuery.QueryStartTime)
 			if err != nil {
 				return err
 			}

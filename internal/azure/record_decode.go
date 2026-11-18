@@ -14,7 +14,7 @@ import (
 // collectionTransport validates the request with ReadTransport first, then
 // isolates schema-invalid records before the SDK decodes the page. It runs below
 // the SDK's payload cache, so retries and native continuation handling stay intact.
-// Rejected entries become null: both adapters already turn null entries into
+// Rejected entries become null: all adapters turn null entries into
 // rejected-record gaps during normalization, without retaining their payloads.
 type collectionTransport struct{ ReadTransport }
 
@@ -70,6 +70,12 @@ func filterRecords(body []byte, route string) ([]byte, error) {
 		case inventoryRoute:
 			var resource armresources.GenericResourceExpanded
 			err = json.Unmarshal(raw, &resource)
+		case serviceHealthRoute:
+			var event armresourcehealth.Event
+			err = json.Unmarshal(raw, &event)
+		case monitorRoute:
+			var alert monitorAlert
+			err = json.Unmarshal(raw, &alert)
 		case healthRoute:
 			var status armresourcehealth.AvailabilityStatus
 			err = json.Unmarshal(raw, &status)

@@ -63,7 +63,7 @@ func TestMixedSchemaPagesRetainValidRecordsAndCheckpoint(t *testing.T) {
 			} else {
 				resourceHealth = collect
 			}
-			code, err := health.Check(context.Background(), &run, inventory, resourceHealth, store.Save)
+			code, err := health.Check(context.Background(), &run, []health.NamedCollector{{Name: "inventory", Collect: inventory}, {Name: "resource_health", Collect: resourceHealth}}, store.Save)
 			if err != nil || code != 3 || calls != 2 || run.Outcome != "partial" || len(run.Evidence) != 1 || run.Sources[route].RejectedRecords != 2 || run.Sources[route].Pages != 2 || run.Sources[route].Reason != "invalid_records" {
 				t.Fatalf("lost valid siblings: code %d error %v calls %d run %+v", code, err, calls, run)
 			}
@@ -82,15 +82,12 @@ func TestMixedSchemaPagesRetainValidRecordsAndCheckpoint(t *testing.T) {
 }
 
 func TestMalformedPageEnvelopesFailWithoutRetry(t *testing.T) {
-	for _, route := range []string{inventoryRoute, healthRoute} {
+	for _, route := range []string{inventoryRoute, healthRoute, serviceHealthRoute, monitorRoute} {
 		for _, body := range []string{`{invalid`, `null`, `[]`, `{}`, `{"value":null}`, `{"value":{}}`, `{"value":[],"nextLink":{"bad":"envelope-canary"}}`} {
 			t.Run(route+"/"+body, func(t *testing.T) {
 				calls := 0
 				c := collection(t, func(*http.Request) (*http.Response, error) { calls++; return response(200, body), nil })
-				collect := c.Inventory
-				if route == healthRoute {
-					collect = c.ResourceHealth
-				}
+				collect := collectorFor(c, route)
 				err := collect(context.Background(), selectedID, func(health.Page) error { t.Fatal("malformed envelope was emitted"); return nil })
 				var diagnostic interface{ Diagnostic() string }
 				if err == nil || !errors.As(err, &diagnostic) || diagnostic.Diagnostic() != "invalid_response" || calls != 1 || strings.Contains(err.Error(), "envelope-canary") {
@@ -141,7 +138,7 @@ func TestMixedSchemaCheckpointSurvivesLaterRetriesAndUnsafeContinuation(t *testi
 				} else {
 					resourceHealth = collect
 				}
-				code, err := health.Check(context.Background(), &run, inventory, resourceHealth, store.Save)
+				code, err := health.Check(context.Background(), &run, []health.NamedCollector{{Name: "inventory", Collect: inventory}, {Name: "resource_health", Collect: resourceHealth}}, store.Save)
 				expectedCalls, reason := 5, "throttled"
 				if scenario == "unsafe continuation" {
 					expectedCalls, reason = 1, "unsafe_continuation"

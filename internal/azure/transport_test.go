@@ -112,7 +112,7 @@ func TestCollectionTransportAndContinuationBoundaries(t *testing.T) {
 					t.Errorf("unsafe request sent %s", tc.url)
 				}
 				if tc.method == "GET" {
-					_, continuationErr := continuation(tc.url, selectedID, route)
+					_, continuationErr := continuation(tc.url, selectedID, route, "")
 					if (continuationErr == nil) != tc.allowed {
 						t.Errorf("continuation validation disagrees %s %v", tc.url, continuationErr)
 					}
@@ -166,7 +166,7 @@ func TestResourceHealthServiceContinuationShape(t *testing.T) {
 				calls++
 				return response(200, `{}`), nil
 			})}
-			_, validationErr := continuation(tc.link, selectedID, healthRoute)
+			_, validationErr := continuation(tc.link, selectedID, healthRoute, "")
 			req, err := http.NewRequest(http.MethodGet, tc.link, nil)
 			if err != nil {
 				t.Fatal(err)
@@ -183,16 +183,16 @@ func TestResourceHealthServiceContinuationShape(t *testing.T) {
 			}
 		})
 	}
-	lower, err := continuation(valid, selectedID, healthRoute)
+	lower, err := continuation(valid, selectedID, healthRoute, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	upper, err := continuation(strings.Replace(valid, "$skiptoken", "$skipToken", 1), selectedID, healthRoute)
+	upper, err := continuation(strings.Replace(valid, "$skiptoken", "$skipToken", 1), selectedID, healthRoute, "")
 	if err != nil || lower != upper {
 		t.Fatal("token alias bypasses repeated-continuation detection")
 	}
 	inventory := "https://management.azure.com/subscriptions/" + selectedID + "/resources?api-version=2025-04-01&$skiptoken=synthetic-next&$top=10"
-	if _, err := continuation(inventory, selectedID, inventoryRoute); err == nil {
+	if _, err := continuation(inventory, selectedID, inventoryRoute, ""); err == nil {
 		t.Fatal("Resource Health page-size allowance leaked into inventory")
 	}
 }

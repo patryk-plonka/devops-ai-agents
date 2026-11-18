@@ -8,6 +8,7 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -139,6 +140,12 @@ func integrationList(route string, records []string, next string) string {
 		if route == "resource_health" {
 			link += "&$top=120"
 		}
+		if route == "service_health" {
+			link = "https://management.azure.com/subscriptions/" + first + "/providers/Microsoft.ResourceHealth/events?api-version=2025-05-01&$skipToken=" + url.QueryEscape(next)
+		}
+		if route == "azure_monitor" {
+			link = "https://management.azure.com:443/subscriptions/" + first + "/providers/Microsoft.AlertsManagement/alerts?api-version=2019-03-01&ctoken=" + url.QueryEscape(next) + "&timeRange=30d"
+		}
 		body += fmt.Sprintf(`,"nextLink":%q`, link)
 	}
 	return body + "}"
@@ -150,6 +157,12 @@ func requestSource(req *http.Request) string {
 	}
 	if strings.HasSuffix(req.URL.Path, "/providers/Microsoft.ResourceHealth/availabilityStatuses") {
 		return "resource_health"
+	}
+	if strings.HasSuffix(req.URL.Path, "/providers/Microsoft.ResourceHealth/events") {
+		return "service_health"
+	}
+	if strings.HasSuffix(req.URL.Path, "/providers/Microsoft.AlertsManagement/alerts") {
+		return "azure_monitor"
 	}
 	return "subscription"
 }
@@ -166,16 +179,17 @@ func assertIntegrationArtifacts(t *testing.T, a App, out, diagnostics *bytes.Buf
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(snapshotBytes)+text+diagnostics.String(), "canary") {
-		t.Fatal("sensitive source/profile/token/error escaped into saved output")
+	outputBytes := string(snapshotBytes) + text + diagnostics.String() + out.String()
+	for _, forbidden := range []string{"canary", second, "44444444-4444-4444-4444-444444444444"} {
+		if strings.Contains(outputBytes, forbidden) {
+			t.Fatal("sensitive source/profile/token/error or foreign scope escaped into saved output")
+		}
 	}
 	if r.Coverage != "incomplete" || !strings.Contains(text, "No resource is classified overall OK") {
 		t.Fatal("overall coverage claim missing or misleading")
 	}
-	for _, source := range []string{"advisor", "service_health", "azure_monitor"} {
-		if r.Sources[source].Status != "not_checked" || r.Sources[source].Reason != "not_implemented_in_s01" || !strings.Contains(text, source) {
-			t.Fatal("unimplemented source presented as covered")
-		}
+	if r.Sources["advisor"].Status != "not_checked" || r.Sources["advisor"].Reason != "not_implemented" || !strings.Contains(text, "advisor") {
+		t.Fatal("unimplemented Advisor presented as covered")
 	}
 	ids := map[string]bool{}
 	for _, e := range r.Evidence {
@@ -358,7 +372,7 @@ func TestFullFlowScopeAndIndependentFailures(t *testing.T) {
 			case "inventory denied", "health denied":
 				wantCode, outcome = 3, "partial"
 			case "both denied":
-				wantCode, outcome = 1, "failed"
+				wantCode, outcome = 3, "partial"
 			}
 			if code := a.Run(integrationContext(t), []string{"health", "check", "--subscription", first, "--debug"}); code != wantCode {
 				t.Fatalf("exit %d want %d: %s", code, wantCode, diagnostics)
@@ -629,7 +643,7 @@ func TestGeneratedRunFilesAreIgnored(t *testing.T) {
 			t.Fatalf("generated artifact is not ignored: %s %v %s", rel, err, b)
 		}
 	}
-	for _, path := range []string{"README.md", "AGENTS.md", "internal/cli/integration_test.go", "internal/cli/testdata/fake-az.sh", "internal/report/testdata/run.json", "internal/report/testdata/mixed-report.md", "context/changes/subscription-resource-health-report/verification.md"} {
+	for _, path := range []string{"README.md", "AGENTS.md", "internal/cli/integration_test.go", "internal/cli/testdata/fake-az.sh", "internal/report/testdata/run.json", "internal/report/testdata/mixed-report.md", "internal/report/testdata/operational/run.json", "internal/report/testdata/operational/report.md", "context/changes/active-alert-report/verification.md"} {
 		b, err := git("check-ignore", "--no-index", "--", path)
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) || exit.ExitCode() != 1 || len(b) != 0 {

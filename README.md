@@ -3,15 +3,19 @@
 A local Go CLI for one manually selected public Azure subscription. Azure access
 is read-only and uses the operator's existing Azure CLI user login.
 
-**S-01 is implemented and accepted:** subscription selection,
-live subscription access validation, independent inventory and Resource Health collection, checkpointed
-evidence in `run.json`, and Markdown reports with graceful interruption.
-Ticket drafts are not implemented.
-Advisor, Service Health, and Azure Monitor are explicitly not checked; overall
-coverage remains incomplete and no resource is classified overall OK.
-The synthetic complete-flow suite covers scale and adverse scenarios; it does
-not establish access to any real subscription. Acceptance status and the local
-checklist are in [verification.md](context/changes/subscription-resource-health-report/verification.md).
+The command collects inventory, Resource Health, Service Health events and
+existing Azure Monitor metric/log alert instances, in that order. Each source
+can fail independently while useful results remain in the report. Advisor and
+ticket drafts remain unimplemented. Overall coverage stays incomplete and no
+resource is classified overall OK.
+
+S-01 was accepted on 2026-11-06; its historical outcomes and limits are in
+[the archived verification record](context/archive/2026-11-05-subscription-resource-health-report/verification.md).
+S-02 implementation and automated integrated verification pass. The operator
+confirmed all tests and accepted S-02 on 2026-11-18; see
+[the verification record](context/changes/active-alert-report/verification.md) for
+the confirmation and scenario limits. Synthetic tests remain separate from
+operator acceptance.
 
 Install the Go version in `go.mod` and Azure CLI. Sign in separately:
 
@@ -25,8 +29,10 @@ The CLI reads cached subscriptions without refreshing them or switching accounts
 If the target is missing from the session, sign in or refresh the session externally.
 Only AzureCloud user accounts are supported. Live validation needs permission to
 read the selected subscription's metadata, ARM resource inventory, and subscription
-Resource Health availability statuses. The program never registers providers,
-repairs permissions, or falls back to another identity.
+Resource Health availability statuses, subscription Service Health events, and
+existing Monitor alert instances. Access to the two new sources still requires
+operator verification; a denied source is reported separately. The program never
+registers providers, repairs permissions, or falls back to another identity.
 
 Run from this repository or one of its subdirectories:
 
@@ -54,9 +60,10 @@ Azure access. The directory is Git-ignored and owner-only on supported filesyste
 snapshots use atomic replacements. Failed scope validation is recorded as failed.
 An unavailable filesystem prevents Azure access. No automatic deletion occurs.
 Each successfully collected page is filtered and checkpointed before the next
-request. A later failure retains earlier evidence; either collector can fail
-without suppressing the other. Each page has a 60-second deadline including
-authentication and up to three SDK retries. Collection stops at 10,000 pages per
+request. A later failure retains earlier evidence; each of the four collectors
+is attempted independently unless cancellation or storage failure stops the run.
+Each page has a 60-second deadline including authentication and up to three SDK
+retries. Collection stops at 10,000 pages per
 source, repeated or unsafe continuations, cancellation, or a checkpoint failure.
 Schema-invalid records are rejected individually with an explicit count and gap;
 valid siblings on the page are retained. Invalid page envelopes fail the page.
@@ -78,6 +85,36 @@ runs/                              # Git-ignored; private local output
     run.json                       # normalized evidence and coverage
     report.md                      # derived from the saved revision
 ```
+
+New runs use schema 2. Existing run directories remain unchanged, and the
+schema-1 synthetic report remains a rendering regression.
+
+Service Health queries events updated in the last 30 days: a fixed UTC reference
+comes from the run start, with a cutoff exactly 30 × 24 hours earlier. The API
+queryStartTime uses the UTC date containing that cutoff; lastUpdateTime is then
+filtered locally at the exact cutoff. Older unchanged active events may be absent.
+Active ServiceIssue, PlannedMaintenance, HealthAdvisory and SecurityAdvisory
+categories are kept distinct. Future maintenance/advisory notices do not establish
+an ongoing outage. Service/region facts come from the selected-subscription list;
+they do not establish affected resources. Sensitive details are not fetched.
+An impact group whose regions all conflict with the selected subscription is
+omitted, and the report records the scope conflict.
+
+Monitor explicitly requests timeRange=30d and source condition Fired, selecting
+Metric/Log locally. New, Acknowledged and Closed workflow responses and
+notification suppression remain separate from Fired. Fired does not prove a
+continuing fault: stateless alerts can remain Fired, and stateful conditions may
+outlive the API's 30-day instance retention. There is no invented local timestamp
+cutoff. A workspace target identifies that workspace only, not all resources
+queried by a log rule. Missing or foreign targets remain unknown with an explicit
+gap; unsafe target values are omitted. No rule, history, log-query or event-detail
+requests are made.
+
+Both source sections show the configured query and evidence collection times.
+The saved `requested_at` timestamp marks query preparation before collection.
+Sequential pages do not form an atomic snapshot. Completed enumeration,
+known exclusions, unclassified evidence and rejected malformed records remain
+separate; successful empty lists do not establish OK.
 
 The normalized record retains the requested scope and resolved subscription/tenant
 identifiers, with defined credential patterns redacted and terminal controls removed.
@@ -106,33 +143,38 @@ The report separates source findings, current Resource Health issue states,
 Available observations, unknown/not-checked resources, and failed checks. All
 observed inventory resources and evidence records remain enumerable, with sorted
 tags and links to the sibling `run.json`; untrusted strings render as literal
-text. A finding retains its source observation even if conflicting or newer
-evidence changes the current state. Use the observation tables and source times
-to interpret it.
+text. Resource Health findings retain their source observations even if newer
+or conflicting evidence changes the current state. Operational active summaries
+use only determined source states: older, inactive, unclassified and conflicting
+observations stay in separate tables and the evidence index. Inspect timestamps
+and gaps before interpreting the evidence.
 Open `report.md` beside `run.json`. Check their run ID/revision first, then find
 each finding's `ev-...` reference in the JSON `evidence` array. Use `resource_id`,
-`status_id`, source/API version, and source/collection timestamps to locate and
+`status_id` for Resource Health, `entity_id`/`subscription_id` for operational
+evidence, source/API version, and source/collection timestamps to locate and
 compare the observation in Azure. Keep the files together so sibling links work.
-For a synthetic example, see [mixed-report.md](internal/report/testdata/mixed-report.md)
-and its sibling [run.json](internal/report/testdata/run.json).
+For a current synthetic example, see
+[report.md](internal/report/testdata/operational/report.md) and its
+sibling [run.json](internal/report/testdata/operational/run.json).
+The schema-1 [mixed-report.md](internal/report/testdata/mixed-report.md) and
+[run.json](internal/report/testdata/run.json) remain historical examples.
 
 The first Ctrl+C stops discovery/collection and finalizes a cancelled, incomplete
 report using local storage, retaining completed pages. Selection prompts also
 respond to interruption. No new Azure evidence is requested during finalization.
 A second Ctrl+C may force termination; the last committed `run.json` checkpoint
 is the recovery artifact. Forced termination or an unwritable filesystem can
-prevent the final report. The operator confirmed the manual checks, including
-interruption and report acceptance, on 2026-11-06; the verification record retains
-the limits of that live coverage.
+prevent the final report. S-01 was accepted on 2026-11-06 and S-02 on 2026-11-18.
+Their verification records retain the reported limits of live coverage.
 
 Exit codes from the built binary:
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Help, or both collectors completed and the report was saved; overall coverage is still incomplete |
-| 1 | Authentication, live scope-access, execution/storage failure, or both collectors failed without useful evidence |
+| 0 | Help, or all four implemented collectors completed and the report was saved; overall coverage is still incomplete |
+| 1 | Pre-collection authentication/scope-access failure, fatal execution/storage/publication failure, or all collectors failed without useful evidence or any completed collector |
 | 2 | Invalid input, missing/ambiguous CLI-session subscription, unsupported cloud/account, or missing repository context |
-| 3 | Partial collection with useful evidence or a completed collector retained |
+| 3 | At least one implemented collector partial/failed, with useful evidence or a completed collector retained (including collector-local authentication failures) |
 | 130 | Interrupted execution; cancelled/incomplete output is saved when finalization succeeds; any storage failure is also disclosed |
 
 `go run` itself returns a wrapper error for nonzero application codes; use the built

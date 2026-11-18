@@ -61,7 +61,22 @@ func Markdown(r health.Run) ([]byte, error) {
 		}
 	}
 	var b strings.Builder
-	b.WriteString("# Subscription Resource Health report\n\n**INCOMPLETE coverage.** Advisor, Service Health, and Azure Monitor are not checked in S-01. No resource is classified overall OK.\n\n")
+	legacy := r.SchemaVersion == 1
+	if legacy {
+		b.WriteString("# Subscription Resource Health report\n\n**INCOMPLETE coverage.** Advisor, Service Health, and Azure Monitor are not checked in S-01. No resource is classified overall OK.\n\n")
+	} else {
+		b.WriteString("# Subscription health report\n\n**INCOMPLETE coverage.** No resource is classified overall OK.\n\n")
+		unchecked := []string{}
+		for name, source := range r.Sources {
+			if source.Status == "not_checked" {
+				unchecked = append(unchecked, name)
+			}
+		}
+		sort.Strings(unchecked)
+		if len(unchecked) > 0 {
+			fmt.Fprintf(&b, "Not checked: %s. Consult source coverage for reasons.\n\n", literal(strings.Join(unchecked, ", ")))
+		}
+	}
 	fmt.Fprintf(&b, "Run ID: %s\n\nRevision: %d\n\nExecution outcome: **%s**\n\n", literal(r.ID), r.Revision, literal(r.Outcome))
 	fmt.Fprintf(&b, "Started (UTC): %s; updated (UTC): %s; ended (UTC): %s.\n\nTool version: %s; schema version: %d; filtered values: %d.\n\n", stamp(&r.StartedAt), stamp(&r.UpdatedAt), stamp(r.EndedAt), literal(r.ToolVersion), r.SchemaVersion, r.Redactions)
 	fmt.Fprintf(&b, "Requested scope: %s.\n\n", literal(r.RequestedScope))
@@ -70,7 +85,12 @@ func Markdown(r health.Run) ([]byte, error) {
 	} else {
 		fmt.Fprintf(&b, "Subscription: %s; ID: %s; tenant: %s; cloud: %s.\n\n", literal(r.Scope.Name), literal(r.Scope.SubscriptionID), literal(r.Scope.TenantID), literal(r.Scope.Cloud))
 	}
-	b.WriteString("Evidence snapshot: [run.json](run.json). Match its run ID and revision to this report. If revisions differ, this report is stale.\n\n## Source coverage\n\n| Source | Status | Pages | Rejected records | Reason |\n| --- | --- | --- | --- | --- |\n")
+	b.WriteString("Evidence snapshot: [run.json](run.json). Match its run ID and revision to this report. If revisions differ, this report is stale.\n\n## Source coverage\n\n")
+	if legacy {
+		b.WriteString("| Source | Status | Pages | Rejected records | Reason |\n| --- | --- | --- | --- | --- |\n")
+	} else {
+		b.WriteString("| Source | Status | Pages | Rejected records | Excluded records | Unclassified records | Reason |\n| --- | --- | --- | --- | --- | --- | --- |\n")
+	}
 	names := make([]string, 0, len(r.Sources))
 	for name := range r.Sources {
 		names = append(names, name)
@@ -78,10 +98,25 @@ func Markdown(r health.Run) ([]byte, error) {
 	sort.Strings(names)
 	for _, name := range names {
 		s := r.Sources[name]
-		fmt.Fprintf(&b, "| %s | %s | %d | %d | %s |\n", literal(name), literal(s.Status), s.Pages, s.RejectedRecords, literal(s.Reason))
+		if legacy {
+			fmt.Fprintf(&b, "| %s | %s | %d | %d | %s |\n", literal(name), literal(s.Status), s.Pages, s.RejectedRecords, literal(s.Reason))
+		} else {
+			fmt.Fprintf(&b, "| %s | %s | %d | %d | %d | %d | %s |\n", literal(name), literal(s.Status), s.Pages, s.RejectedRecords, s.ExcludedRecords, s.UnclassifiedRecords, literal(s.Reason))
+		}
 	}
-	b.WriteString("\nCollector completion describes enumeration by that API. Inventory may omit child resources; an Available observation provides Resource Health evidence only. Failed checks and missing evidence do not establish resource faults.\n\n## Observed issues and events\n\nFindings retain source observations, including conflicting or superseded observations. Consult the current-state tables and timestamps before interpreting them as current faults.\n\n")
+	b.WriteString("\nCollector completion describes enumeration by that API. Inventory may omit child resources; an Available observation provides Resource Health evidence only. Failed checks and missing evidence do not establish resource faults.\n\n")
+	if !legacy {
+		writeOperationalSections(&b, r)
+	}
+	if legacy {
+		b.WriteString("## Observed issues and events\n\nFindings retain source observations, including conflicting or superseded observations. Consult the current-state tables and timestamps before interpreting them as current faults.\n\n")
+	} else {
+		b.WriteString("## Resource Health findings\n\nThese findings retain Resource Health source observations, including conflicting or superseded observations. Consult current-state tables and timestamps before interpreting them as current faults.\n\n")
+	}
 	findings := slices.Clone(r.Findings)
+	if !legacy {
+		findings = slices.DeleteFunc(findings, func(f health.Finding) bool { return f.Source == "service_health" || f.Source == "azure_monitor" })
+	}
 	sort.Slice(findings, func(i, j int) bool {
 		a, c := findings[i], findings[j]
 		if a.Category != c.Category {
@@ -135,14 +170,30 @@ func Markdown(r health.Run) ([]byte, error) {
 	if len(resources) == 0 {
 		b.WriteString("| None observed | — | — | — | — | — | — |\n")
 	}
-	b.WriteString("\n## Coverage gaps and failed checks\n\n| Source | Resource | Reason | Evidence |\n| --- | --- | --- | --- |\n")
+	b.WriteString("\n## Coverage gaps and failed checks\n\n")
+	if legacy {
+		b.WriteString("| Source | Resource | Reason | Evidence |\n| --- | --- | --- | --- |\n")
+	} else {
+		b.WriteString("| Source | Source entity | Resource attribution | Reason | Evidence |\n| --- | --- | --- | --- | --- |\n")
+	}
 	gaps := slices.Clone(r.Gaps)
 	sort.Slice(gaps, func(i, j int) bool {
 		a, c := gaps[i], gaps[j]
-		return a.Source+"\x00"+health.CanonicalID(a.ResourceID)+"\x00"+a.Reason < c.Source+"\x00"+health.CanonicalID(c.ResourceID)+"\x00"+c.Reason
+		if legacy {
+			return a.Source+"\x00"+health.CanonicalID(a.ResourceID)+"\x00"+a.Reason < c.Source+"\x00"+health.CanonicalID(c.ResourceID)+"\x00"+c.Reason
+		}
+		return a.Source+"\x00"+health.CanonicalID(a.EntityID)+"\x00"+health.CanonicalID(a.ResourceID)+"\x00"+a.Reason+"\x00"+strings.Join(a.EvidenceIDs, ",") < c.Source+"\x00"+health.CanonicalID(c.EntityID)+"\x00"+health.CanonicalID(c.ResourceID)+"\x00"+c.Reason+"\x00"+strings.Join(c.EvidenceIDs, ",")
 	})
 	for _, g := range gaps {
-		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", literal(g.Source), literal(g.ResourceID), literal(g.Reason), refs(g.EvidenceIDs))
+		if legacy {
+			fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", literal(g.Source), literal(g.ResourceID), literal(g.Reason), refs(g.EvidenceIDs))
+		} else {
+			attribution := literal(g.ResourceID)
+			if g.ResourceID == "" {
+				attribution = "Unknown; no affected resource established"
+			}
+			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", literal(g.Source), literal(g.EntityID), attribution, literal(g.Reason), refs(g.EvidenceIDs))
+		}
 	}
 	b.WriteString("\n## Execution diagnostics\n\n")
 	diagnostics := slices.Clone(r.Diagnostics)
@@ -162,6 +213,12 @@ func Markdown(r health.Run) ([]byte, error) {
 		return a.Source+"\x00"+health.CanonicalID(a.ResourceID)+"\x00"+a.ID < c.Source+"\x00"+health.CanonicalID(c.ResourceID)+"\x00"+c.ID
 	})
 	for _, e := range records {
+		if !legacy && (e.Source == "service_health" || e.Source == "azure_monitor") {
+			fmt.Fprintf(&b, "### %s\n\n- Record: %s\n- Source: %s; operation: %s; API version: %s.\n- Source entity: %s; selected subscription: %s.\n- Resource attribution: %s.\n- Kind: %s; disposition: %s.\n- Collected (UTC): %s; source reported (UTC): %s; source occurred (UTC): %s.\n", literal(e.ID), refs([]string{e.ID}), literal(e.Source), literal(e.Operation), literal(e.APIVersion), literal(e.EntityID), literal(e.SubscriptionID), resourceAttribution(e.ResourceID), literal(e.Kind), literal(e.Disposition), stamp(&e.CollectedAt), stamp(e.ReportedAt), stamp(e.OccurredAt))
+			writeOperationalFacts(&b, e)
+			b.WriteByte('\n')
+			continue
+		}
 		fmt.Fprintf(&b, "### %s\n\n- Record: %s\n- Source: %s; operation: %s; API version: %s.\n- Resource: %s\n- Kind: %s; state: %s; status role: %s.\n- Status ID: %s\n- Event ID: %s; additional event IDs: %s.\n- Collected (UTC): %s; source reported (UTC): %s; source occurred (UTC): %s.\n", literal(e.ID), refs([]string{e.ID}), literal(e.Source), literal(e.Operation), literal(e.APIVersion), literal(e.ResourceID), literal(e.Kind), literal(e.State), literal(e.StatusRole), literal(e.StatusID), literal(e.EventID), literal(strings.Join(e.EventIDs, ", ")), stamp(&e.CollectedAt), stamp(e.ReportedAt), stamp(e.OccurredAt))
 		if e.Resource != nil {
 			v := e.Resource

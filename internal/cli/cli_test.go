@@ -38,7 +38,9 @@ func testApp(t *testing.T) (App, *bytes.Buffer, *bytes.Buffer, *int) {
 		return []azure.Account{cached(first, "Client")}, nil
 	}, Validate: func(context.Context, azure.Account) error { *calls++; return nil },
 		Inventory:      func(context.Context, string, func(health.Page) error) error { return nil },
-		ResourceHealth: func(context.Context, string, func(health.Page) error) error { return nil }}, out, diagnostics, calls
+		ResourceHealth: func(context.Context, string, func(health.Page) error) error { return nil },
+		ServiceHealth:  func(context.Context, string, func(health.Page) error) error { return nil },
+		AzureMonitor:   func(context.Context, string, func(health.Page) error) error { return nil }}, out, diagnostics, calls
 }
 
 func snapshot(t *testing.T, root string) health.Run {
@@ -92,14 +94,14 @@ func TestCollectedScopeRemainsExplicitlyIncomplete(t *testing.T) {
 	}
 	code := a.Run(context.Background(), []string{"health", "check", "--subscription", "cLiEnT"})
 	r := snapshot(t, a.Directory)
-	if code != 0 || out.Len() == 0 || *calls != 2 || r.Outcome != "completed" || r.Coverage != "incomplete" || r.Scope.SubscriptionID != first || r.Revision != 6 {
+	if code != 0 || out.Len() == 0 || *calls != 2 || r.Outcome != "completed" || r.Coverage != "incomplete" || r.Scope.SubscriptionID != first || r.Revision != 10 {
 		t.Fatalf("code %d run %+v output %s", code, r, diag)
 	}
 	if !strings.Contains(diag.String(), "overall coverage: incomplete") || !strings.Contains(diag.String(), "Report saved:") {
 		t.Fatal("misleading preliminary result")
 	}
 	for name, source := range r.Sources {
-		if name == "inventory" || name == "resource_health" {
+		if name != "advisor" {
 			if source.Status != "completed" {
 				t.Fatal("collector incomplete")
 			}

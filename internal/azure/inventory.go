@@ -25,7 +25,8 @@ func (c Collection) Inventory(ctx context.Context, subscription string, emit fun
 	if err != nil {
 		return fail("client_failure", "Cannot initialize inventory collection.", 1)
 	}
-	return pages(ctx, c, subscription, inventoryRoute, client.NewListPager(nil), func(response armresources.ClientListResponse) (*string, error) {
+	initial := "https://management.azure.com/subscriptions/" + subscription + "/resources?api-version=2025-04-01"
+	return pages(ctx, c, subscription, inventoryRoute, initial, client.NewListPager(nil), func(response armresources.ClientListResponse) (*string, error) {
 		if response.Value == nil {
 			return nil, fail("invalid_response", "Inventory response has no resource list.", 1)
 		}

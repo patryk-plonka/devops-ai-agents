@@ -22,11 +22,28 @@ func listURL(route, token string) string {
 		path = "/providers/Microsoft.ResourceHealth/availabilityStatuses"
 		version = "2025-05-01"
 	}
+	if route == serviceHealthRoute {
+		path, version = "/providers/Microsoft.ResourceHealth/events", "2025-05-01"
+	}
+	if route == monitorRoute {
+		path, version = "/providers/Microsoft.AlertsManagement/alerts", "2019-03-01"
+	}
 	result := "https://management.azure.com/subscriptions/" + selectedID + path + "?api-version=" + version
+	if token == "" {
+		if route == serviceHealthRoute {
+			result += "&queryStartTime=10/16/2026"
+		}
+		if route == monitorRoute {
+			result += "&timeRange=30d&monitorCondition=Fired&includeContext=false&includeEgressConfig=false&pageCount=100"
+		}
+	}
 	if token != "" {
 		key := "$skiptoken"
-		if route == healthRoute {
+		if route == healthRoute || route == serviceHealthRoute {
 			key = "$skipToken"
+		}
+		if route == monitorRoute {
+			key = "ctoken"
 		}
 		result += "&" + key + "=" + token
 	}
@@ -34,13 +51,28 @@ func listURL(route, token string) string {
 }
 func collection(t *testing.T, transport roundTrip) Collection {
 	t.Helper()
-	return Collection{Base: transport, retryDelay: -1, Credential: func(id string) (azcore.TokenCredential, error) {
+	return Collection{ServiceHealthQuery: health.ServiceHealthQuery(time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)), Base: transport, retryDelay: -1, Credential: func(id string) (azcore.TokenCredential, error) {
 		if id != selectedID {
 			t.Fatal("wrong credential subscription")
 		}
 		return fakeCredential{}, nil
 	}}
 }
+func collectorFor(c Collection, route string) health.Collector {
+	switch route {
+	case inventoryRoute:
+		return c.Inventory
+	case healthRoute:
+		return c.ResourceHealth
+	case serviceHealthRoute:
+		return c.ServiceHealth
+	case monitorRoute:
+		return c.AzureMonitor
+	default:
+		panic("unknown test collector")
+	}
+}
+
 func TestNativePagersCheckpointAndWhitelist(t *testing.T) {
 	for _, route := range []string{inventoryRoute, healthRoute} {
 		t.Run(route, func(t *testing.T) {
@@ -78,10 +110,7 @@ func TestNativePagersCheckpointAndWhitelist(t *testing.T) {
 			run := health.NewRun("test", "test")
 			run.Scope = &health.Scope{SubscriptionID: selectedID}
 			emit := func(p health.Page) error { emitted++; run.NormalizePage(route, p); return nil }
-			collect := c.Inventory
-			if route == healthRoute {
-				collect = c.ResourceHealth
-			}
+			collect := collectorFor(c, route)
 			if err := collect(context.Background(), selectedID, emit); err != nil {
 				t.Fatal(err)
 			}
@@ -103,8 +132,8 @@ func TestNativePagersCheckpointAndWhitelist(t *testing.T) {
 }
 
 func TestLaterPageFailuresPreserveFirstPage(t *testing.T) {
-	for _, route := range []string{inventoryRoute, healthRoute} {
-		for _, scenario := range []string{"denied", "unauthorized", "throttled", "timeout", "unsafe host", "wrong subscription", "other operation", "other version", "extra query", "repeat", "initial repeat", "limit", "redirect", "malformed", "missing list", "registration", "unsupported"} {
+	for _, route := range []string{inventoryRoute, healthRoute, serviceHealthRoute, monitorRoute} {
+		for _, scenario := range []string{"denied", "unauthorized", "unavailable", "throttled", "timeout", "unsafe host", "wrong subscription", "other operation", "other version", "extra query", "repeat", "initial repeat", "limit", "redirect", "malformed", "missing list", "registration", "unsupported"} {
 			t.Run(route+"/"+scenario, func(t *testing.T) {
 				calls, emitted := 0, 0
 				c := collection(t, func(req *http.Request) (*http.Response, error) {
@@ -123,7 +152,11 @@ func TestLaterPageFailuresPreserveFirstPage(t *testing.T) {
 							}
 							next = listURL(other, "next")
 						case "other version":
-							next = strings.Replace(next, "2025-", "2024-", 1)
+							u, _ := url.Parse(next)
+							q := u.Query()
+							q.Set("api-version", "1900-01-01")
+							u.RawQuery = q.Encode()
+							next = u.String()
 						case "initial repeat":
 							next = listURL(route, "")
 						case "extra query":
@@ -139,6 +172,8 @@ func TestLaterPageFailuresPreserveFirstPage(t *testing.T) {
 						return response(403, `{"error":{"code":"AuthorizationFailed","message":"body-canary"}}`), nil
 					case "unauthorized":
 						return response(401, `{}`), nil
+					case "unavailable":
+						return response(404, `{"error":{"message":"body-canary"}}`), nil
 					case "throttled":
 						return response(429, `{}`), nil
 					case "timeout":
@@ -164,10 +199,7 @@ func TestLaterPageFailuresPreserveFirstPage(t *testing.T) {
 				if scenario == "limit" {
 					c.pageLimit = 1
 				}
-				collect := c.Inventory
-				if route == healthRoute {
-					collect = c.ResourceHealth
-				}
+				collect := collectorFor(c, route)
 				err := collect(context.Background(), selectedID, func(health.Page) error { emitted++; return nil })
 				if err == nil || strings.Contains(err.Error(), "canary") {
 					t.Fatalf("unsafe/missing error %v", err)
@@ -178,6 +210,8 @@ func TestLaterPageFailuresPreserveFirstPage(t *testing.T) {
 					reason = "access_denied"
 				case "unauthorized":
 					reason = "login_required"
+				case "unavailable":
+					reason = "source_unavailable"
 				case "throttled":
 					reason = "throttled"
 				case "timeout":
@@ -216,27 +250,21 @@ func TestLaterPageFailuresPreserveFirstPage(t *testing.T) {
 	}
 }
 func TestCollectorDeadlineAndCheckpointFailure(t *testing.T) {
-	for _, route := range []string{inventoryRoute, healthRoute} {
+	for _, route := range []string{inventoryRoute, healthRoute, serviceHealthRoute, monitorRoute} {
 		t.Run(route, func(t *testing.T) {
 			calls := 0
 			c := collection(t, func(*http.Request) (*http.Response, error) {
 				calls++
 				return response(200, fmt.Sprintf(`{"value":[],"nextLink":%q}`, listURL(route, "next"))), nil
 			})
-			collect := c.Inventory
-			if route == healthRoute {
-				collect = c.ResourceHealth
-			}
+			collect := collectorFor(c, route)
 			sentinel := errors.New("write-canary")
 			if err := collect(context.Background(), selectedID, func(health.Page) error { return sentinel }); !errors.Is(err, sentinel) || calls != 1 {
 				t.Fatal("write failure allowed another page")
 			}
 			c.timeout = -time.Second
 			calls = 0
-			collect = c.Inventory
-			if route == healthRoute {
-				collect = c.ResourceHealth
-			}
+			collect = collectorFor(c, route)
 			err := collect(context.Background(), selectedID, func(health.Page) error { t.Fatal("expired page emitted"); return nil })
 			if err == nil || calls != 0 {
 				t.Fatalf("expired context accessed ARM: %d %v", calls, err)
@@ -246,7 +274,7 @@ func TestCollectorDeadlineAndCheckpointFailure(t *testing.T) {
 }
 
 func TestCollectorCancellationStopsBeforeNextRequest(t *testing.T) {
-	for _, route := range []string{inventoryRoute, healthRoute} {
+	for _, route := range []string{inventoryRoute, healthRoute, serviceHealthRoute, monitorRoute} {
 		t.Run(route, func(t *testing.T) {
 			calls := 0
 			ctx, cancel := context.WithCancel(context.Background())
@@ -255,10 +283,7 @@ func TestCollectorCancellationStopsBeforeNextRequest(t *testing.T) {
 				calls++
 				return response(200, fmt.Sprintf(`{"value":[],"nextLink":%q}`, listURL(route, "next"))), nil
 			})
-			collect := c.Inventory
-			if route == healthRoute {
-				collect = c.ResourceHealth
-			}
+			collect := collectorFor(c, route)
 			pages := 0
 			err := collect(ctx, selectedID, func(health.Page) error { pages++; cancel(); return nil })
 			if !errors.Is(err, context.Canceled) || calls != 1 || pages != 1 {

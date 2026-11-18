@@ -97,6 +97,8 @@ func (r *Run) addEvidence(e Evidence) {
 	identity.CollectedAt = time.Time{}
 	identity.ResourceID = CanonicalID(identity.ResourceID)
 	identity.StatusID = CanonicalID(identity.StatusID)
+	identity.EntityID = CanonicalID(identity.EntityID)
+	identity.SubscriptionID = CanonicalID(identity.SubscriptionID)
 	e.ID = stableID("ev-", identity)
 	for _, prior := range r.Evidence {
 		if prior.ID == e.ID {
@@ -116,7 +118,8 @@ func (r *Run) NormalizePage(source string, page Page) {
 	}
 	invalid := 0
 	text := func(s string) string { v, n := SafeText(s); r.Redactions += n; return v }
-	if source == "inventory" {
+	switch source {
+	case "inventory":
 		for _, input := range page.Resources {
 			if !ResourceID(input.ID, subscription) {
 				invalid++
@@ -132,7 +135,7 @@ func (r *Run) NormalizePage(source string, page Page) {
 			facts := ResourceFacts{ID: input.ID, Name: text(input.Name), Type: text(input.Type), Location: text(input.Location), ResourceGroup: rg, Tags: tags}
 			r.addEvidence(Evidence{Source: source, Operation: "Resources.List", APIVersion: InventoryAPI, ResourceID: input.ID, Kind: "inventory", CollectedAt: collected, Resource: &facts})
 		}
-	} else {
+	case "resource_health":
 		for _, input := range page.Health {
 			id, valid := statusResourceID(input.StatusID, subscription)
 			if !valid {
@@ -167,6 +170,22 @@ func (r *Run) NormalizePage(source string, page Page) {
 				role = "current"
 			}
 			r.addEvidence(Evidence{Source: source, StatusRole: role, Operation: "AvailabilityStatuses.ListBySubscriptionId", APIVersion: ResourceHealthAPI, ResourceID: id, StatusID: input.StatusID, State: state, Kind: kind, EventID: eventID, EventIDs: events, CollectedAt: collected, ReportedAt: reported, OccurredAt: utcTime(input.OccurredAt)})
+		}
+	case "service_health":
+		for _, input := range page.ServiceHealth {
+			if e, valid := r.serviceEvidence(input, collected); valid {
+				r.addOperational(e)
+			} else {
+				invalid++
+			}
+		}
+	case "azure_monitor":
+		for _, input := range page.Monitor {
+			if e, valid := r.monitorEvidence(input, collected); valid {
+				r.addOperational(e)
+			} else {
+				invalid++
+			}
 		}
 	}
 	s := r.Sources[source]
@@ -203,7 +222,7 @@ func (r *Run) RebuildCoverage() {
 	}
 	for _, source := range []string{"inventory", "resource_health", "advisor", "service_health", "azure_monitor"} {
 		s := r.Sources[source]
-		if s.RejectedRecords > 0 && s.Reason != "invalid_records" {
+		if s.RejectedRecords > 0 && (s.Reason != "invalid_records" || s.Status == "completed") {
 			gap(source, "", "invalid_records", nil)
 		}
 		if s.Status != "completed" {
@@ -320,7 +339,8 @@ func (r *Run) RebuildCoverage() {
 			}
 		}
 	}
-	if len(r.Evidence) == 0 && r.Sources["inventory"].Status == "completed" && r.Sources["resource_health"].Status == "completed" {
+	r.rebuildOperationalCoverage()
+	if len(r.Resources) == 0 && len(healthByResource) == 0 && r.Sources["inventory"].Status == "completed" && r.Sources["resource_health"].Status == "completed" {
 		gap("inventory", "", "no_resources_observed", nil)
 	}
 	sort.Slice(r.Resources, func(i, j int) bool { return CanonicalID(r.Resources[i].ID) < CanonicalID(r.Resources[j].ID) })
@@ -333,7 +353,7 @@ func (r *Run) RebuildCoverage() {
 	})
 	sort.Slice(r.Gaps, func(i, j int) bool {
 		a, b := r.Gaps[i], r.Gaps[j]
-		return a.Source+a.ResourceID+a.Reason < b.Source+b.ResourceID+b.Reason
+		return a.Source+"\x00"+a.ResourceID+"\x00"+a.EntityID+"\x00"+a.Reason+"\x00"+strings.Join(a.EvidenceIDs, ",") < b.Source+"\x00"+b.ResourceID+"\x00"+b.EntityID+"\x00"+b.Reason+"\x00"+strings.Join(b.EvidenceIDs, ",")
 	})
 }
 

@@ -17,7 +17,8 @@ func (c Collection) ResourceHealth(ctx context.Context, subscription string, emi
 	if err != nil {
 		return fail("client_failure", "Cannot initialize Resource Health collection.", 1)
 	}
-	return pages(ctx, c, subscription, healthRoute, client.NewListBySubscriptionIDPager(nil), func(response armresourcehealth.AvailabilityStatusesClientListBySubscriptionIDResponse) (*string, error) {
+	initial := "https://management.azure.com/subscriptions/" + subscription + "/providers/Microsoft.ResourceHealth/availabilityStatuses?api-version=2025-05-01"
+	return pages(ctx, c, subscription, healthRoute, initial, client.NewListBySubscriptionIDPager(nil), func(response armresourcehealth.AvailabilityStatusesClientListBySubscriptionIDResponse) (*string, error) {
 		if response.Value == nil {
 			return nil, fail("invalid_response", "Resource Health response has no observation list.", 1)
 		}

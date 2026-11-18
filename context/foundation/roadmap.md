@@ -3,7 +3,7 @@ project: "AI Agents for Devops"
 version: 1
 status: draft
 created: 2026-11-02
-updated: 2026-11-06
+updated: 2026-11-18
 prd_version: 1
 main_goal: quality
 top_blocker: none
@@ -34,7 +34,7 @@ The user confirmed no known blocker after stack selection and bootstrap. Confirm
 | ID | Change ID | Outcome (user can …) | Prerequisites | PRD refs | Status |
 |---|---|---|---|---|---|
 | S-01 | subscription-resource-health-report | Consultant can select one subscription with the existing work identity and receive a scoped Resource Health Markdown report or an explicit access failure. | — | US-01, FR-001, FR-002, FR-003, FR-004 | done |
-| S-02 | active-alert-report | Consultant can see relevant Service Health events and existing Azure Monitor metric/log alerts in the subscription report. | S-01 | US-01, FR-002, FR-003, FR-004 | proposed |
+| S-02 | active-alert-report | Consultant can see relevant Service Health events and existing Azure Monitor metric/log alerts in the subscription report. | S-01 | US-01, FR-002, FR-003, FR-004 | done |
 | S-03 | advisor-recommendation-report | Consultant can review existing Azure Advisor recommendations and supporting evidence in the subscription report. | S-01 | US-01, FR-002, FR-003, FR-004 | proposed |
 | S-04 | complete-health-report | Consultant can run one check and review a consolidated Markdown report of active alerts, existing recommendations, evidence-backed OK resources, and explicit coverage gaps. | S-02, S-03 | US-01, FR-002, FR-003, FR-004 | proposed |
 | S-05 | selected-finding-drafts | Consultant can select findings from the reviewed report and generate ticket or recommendation drafts for manual submission. | S-04 | US-01, FR-004, FR-005 | proposed |
@@ -88,7 +88,7 @@ Resolve subscription IDs and names, prompt on ambiguous names, and make denied s
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Incorrect event-to-scope attribution could put unrelated alerts in a client's report; validate the selected-subscription boundary.
-- **Status:** proposed
+- **Status:** done
 
 Extend the working report with the two operational-alert sources, preserving source evidence and the distinction between active findings and unavailable coverage. Keep useful findings when either source fails and mark the report incomplete. Restrict conclusions to the selected subscription and make uncertainty about affected resources visible. This slice does not configure alert rules or create new monitoring.
 
@@ -143,16 +143,16 @@ Live acceptance for S-01–S-04 needs an authorized subscription and permitted e
 | Roadmap ID | Change ID | Suggested issue title | Ready for `/10x-plan` | Notes |
 |---|---|---|---|---|
 | S-01 | subscription-resource-health-report | Inspect one subscription's resource health | yes | Run `/10x-plan subscription-resource-health-report`; confirm the live acceptance environment alongside planning. |
-| S-02 | active-alert-report | See active operational alerts | no | Await S-01. |
+| S-02 | active-alert-report | See active operational alerts | no | Implemented; operator accepted 2026-11-18. |
 | S-03 | advisor-recommendation-report | See existing Advisor recommendations | no | Await S-01. |
-| S-04 | complete-health-report | Trust the complete four-source current-state report | no | Await S-02, S-03. |
+| S-04 | complete-health-report | Trust the complete four-source current-state report | no | Await S-03; S-02 is accepted. |
 | S-05 | selected-finding-drafts | Draft only selected findings | no | Await S-04. |
 
 ## Open Roadmap Questions
 
 The PRD contains no open product questions.
 
-1. **Which authorized subscription and permitted source evidence will be used for live acceptance?** — Owner: user. Block: live verification of S-01, S-02, S-03, and S-04; does not block planning. Confirm that the existing work identity can read the applicable sources. Until then, do not claim access or complete coverage. Exercise inaccessible and unsupported cases through controlled verification rather than changing client resources to manufacture failures.
+1. **Which authorized subscription and permitted source evidence will be used for live acceptance?** — Owner: user. Block: remaining live verification of S-03 and S-04; does not block planning. S-01 and S-02 operator acceptance are recorded in their verification documents. Confirm that the existing work identity can read the applicable sources. Until then, do not claim access or complete coverage. Exercise inaccessible and unsupported cases through controlled verification rather than changing client resources to manufacture failures.
 
 ## Parked
 
@@ -166,3 +166,5 @@ The PRD contains no open product questions.
 ## Done
 
 - **S-01: Consultant can select one subscription with the existing work identity and receive a scoped Resource Health Markdown report or an explicit access failure.** — Archived 2026-11-06 → `context/archive/2026-11-05-subscription-resource-health-report/`. Lesson: —.
+
+- **S-02: Consultant can see relevant Service Health events and existing Azure Monitor metric/log alerts in the subscription report.** — Operator accepted 2026-11-18; implemented, uncommitted and not yet archived. Acceptance and scenario limits: `context/changes/active-alert-report/verification.md`.

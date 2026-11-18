@@ -49,7 +49,7 @@ and disables automatic provider registration.
 
 The repository has real packages and `.github/workflows/checks.yml`. CI runs on pull
 requests and pushes to main, with `contents: read`, no Azure credentials, and no
-report uploads. `setup-go` reads the Go directive in `go.mod` (currently 1.27.3).
+report uploads. `setup-go` reads the Go directive in `go.mod` (currently 1.27.4).
 
 | Component | CI pin |
 | --- | --- |
@@ -107,7 +107,27 @@ resolving modules under that sandbox. Network access is needed for dependency
 downloads and the vulnerability database. Empty package sets never establish a
 passing test or audit.
 
-## Phase 2 verification
+## Current S-02 integration
+
+The command now collects inventory, Resource Health, Service Health and Azure
+Monitor sequentially. Service Health uses the installed generated Events pager;
+Monitor uses stable 2019-03-01 through the existing azcore ARM pipeline/runtime
+pager. There is no additional SDK dependency or change to the Go directive.
+Synthetic CLI/report/store tests cover saved query policies, independent source
+failures, cancellation/checkpoint stops, literal operational Markdown and
+schema-1/schema-2 publication. Full native four-source integration, paging,
+failure, privacy, artifact and synchronized process-interruption checks pass.
+The operator confirmed all tests and accepted S-02 on 2026-11-18; see
+[the verification record](../changes/active-alert-report/verification.md) for
+confirmation and scenario limits.
+
+The installed local toolchain reported Go 1.27.4 during S-02 work on 2026-11-15.
+Final review reproduced a required audit failure on the previous Go 1.27.3
+directive. The directive now selects Go 1.27.4, which fixes GO-2026-6859.
+The Go 1.27.4 audit reported no vulnerabilities in called code or imported
+packages and three advisories in required modules outside called code.
+
+## Historical S-01 Phase 2 verification
 
 On 2026-11-06, collection/privacy tests, build, race/coverage tests, vet,
 staticcheck, govulncheck, formatting, ShellCheck, and actionlint passed. The
@@ -117,7 +137,7 @@ retries/deadlines, unsafe continuations and redirects, independent source failur
 committed page checkpoints, invalid scope, health conflicts, and tag filtering.
 No live subscription was accessed; report and live acceptance work remain pending.
 
-## Phase 3 verification
+## Historical S-01 Phase 3 verification
 
 On 2026-11-06, report/orchestration tests, build, race/coverage tests, vet,
 staticcheck, govulncheck, formatting, ShellCheck, and actionlint passed. The
@@ -135,7 +155,7 @@ second interrupt during blocked finalization. Graceful cases return 130 without
 further Azure calls; forced termination retains the last checkpoint. No live
 subscription was accessed. Phase 4 integration and operator acceptance are pending.
 
-## Complete-flow checks
+## Historical S-01 complete-flow checks
 
 Local and CI checks above match, including uncached race/coverage tests and
 ShellCheck for the synthetic Azure CLI script. `internal/cli/integration_test.go`
@@ -161,7 +181,7 @@ corrected CLI-schema and Resource Health continuation assumptions; both now have
 independent regressions. Successful live name/UUID runs followed, and the operator
 confirmed all manual checks on 2026-11-06. CI has not been executed on GitHub.
 Live outcomes and scenario limits are in
-[the change verification record](../changes/subscription-resource-health-report/verification.md);
+[the archived S-01 verification record](../archive/2026-11-05-subscription-resource-health-report/verification.md);
 real subscription evidence remains in ignored local storage.
 
 ## Historical bootstrap verification

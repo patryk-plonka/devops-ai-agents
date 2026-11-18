@@ -26,7 +26,7 @@ func TestCLICollectionOutcomesAndEvidence(t *testing.T) {
 		{"completed", false, false, 0, "completed"},
 		{"inventory denied", true, false, 3, "partial"},
 		{"health denied", false, true, 3, "partial"},
-		{"both denied", true, true, 1, "failed"},
+		{"old sources denied, operational lists completed", true, true, 3, "partial"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a, out, diag, _ := testApp(t)

@@ -27,15 +27,16 @@ type Storage interface {
 	Close() error
 }
 type App struct {
-	In                        io.Reader
-	Out, Err                  io.Writer
-	Terminal                  bool
-	Directory, Version        string
-	Discover                  func(context.Context) ([]azure.Account, error)
-	Validate                  func(context.Context, azure.Account) error
-	NewStore                  func(string, *health.Run) (Storage, error)
-	Inventory, ResourceHealth health.Collector
-	Render                    func(health.Run) ([]byte, error)
+	In                          io.Reader
+	Out, Err                    io.Writer
+	Terminal                    bool
+	Directory, Version          string
+	Discover                    func(context.Context) ([]azure.Account, error)
+	Validate                    func(context.Context, azure.Account) error
+	NewStore                    func(string, *health.Run) (Storage, error)
+	Inventory, ResourceHealth   health.Collector
+	ServiceHealth, AzureMonitor health.Collector
+	Render                      func(health.Run) ([]byte, error)
 }
 
 const usage = "Usage: devops-ai-agents health check --subscription <id-or-full-name> [--non-interactive] [--debug]\n--debug: print filtered Azure SDK request, status, timing, and retry diagnostics to stderr.\nSaves a Markdown report and normalized evidence; overall coverage remains incomplete.\n"
@@ -89,6 +90,10 @@ func (a App) Run(ctx context.Context, args []string) int {
 		newStore = func(root string, run *health.Run) (Storage, error) { return runstore.New(root, run) }
 	}
 	run := health.NewRun(*requested, a.Version)
+	for _, name := range []string{"service_health", "azure_monitor"} {
+		run.Sources[name] = health.Source{Status: "not_checked", Reason: "not_attempted"}
+	}
+	run.Sources["advisor"] = health.Source{Status: "not_checked", Reason: "not_implemented"}
 	store, err := newStore(root, &run)
 	if err != nil {
 		fmt.Fprintln(a.Err, "Cannot initialize local run storage; no artifact could be saved and no Azure requests were made.")
@@ -242,15 +247,34 @@ func (a App) Run(ctx context.Context, args []string) int {
 	if ctx.Err() != nil {
 		return finish("cancelled", "interrupted", "Run cancelled.", 130)
 	}
+	serviceQuery, monitorQuery := health.ServiceHealthQuery(run.StartedAt), health.MonitorQuery(run.StartedAt)
+	source := run.Sources["service_health"]
+	source.Query = &serviceQuery
+	run.Sources["service_health"] = source
+	source = run.Sources["azure_monitor"]
+	source.Query = &monitorQuery
+	run.Sources["azure_monitor"] = source
+	collection := azure.Collection{ServiceHealthQuery: serviceQuery}
 	inventory, resourceHealth := a.Inventory, a.ResourceHealth
+	serviceHealth, monitor := a.ServiceHealth, a.AzureMonitor
 	if inventory == nil {
-		inventory = (azure.Collection{}).Inventory
+		inventory = collection.Inventory
 	}
 	if resourceHealth == nil {
-		resourceHealth = (azure.Collection{}).ResourceHealth
+		resourceHealth = collection.ResourceHealth
 	}
-	fmt.Fprintln(a.Err, "Collecting inventory and Resource Health evidence...")
-	code, err := health.Check(ctx, &run, inventory, resourceHealth, store.Save)
+	if serviceHealth == nil {
+		serviceHealth = collection.ServiceHealth
+	}
+	if monitor == nil {
+		monitor = collection.AzureMonitor
+	}
+	collectors := []health.NamedCollector{
+		{Name: "inventory", Collect: inventory}, {Name: "resource_health", Collect: resourceHealth},
+		{Name: "service_health", Collect: serviceHealth}, {Name: "azure_monitor", Collect: monitor},
+	}
+	fmt.Fprintln(a.Err, "Collecting inventory, Resource Health, Service Health, and Azure Monitor evidence...")
+	code, err := health.Check(ctx, &run, collectors, store.Save)
 	if err != nil {
 		fmt.Fprintln(a.Err, "Evidence checkpoint write failed; collection stopped.")
 		retained()
@@ -260,9 +284,9 @@ func (a App) Run(ctx context.Context, args []string) int {
 		}
 		return 1
 	}
-	for _, name := range []string{"inventory", "resource_health"} {
-		source := run.Sources[name]
-		fmt.Fprintf(a.Err, "%s: %s; pages=%d; reason=%s\n", name, source.Status, source.Pages, source.Reason)
+	for _, item := range collectors {
+		source := run.Sources[item.Name]
+		fmt.Fprintf(a.Err, "%s: %s; pages=%d; rejected=%d; excluded=%d; unclassified=%d; reason=%s\n", item.Name, source.Status, source.Pages, source.RejectedRecords, source.ExcludedRecords, source.UnclassifiedRecords, source.Reason)
 	}
 	return finish(run.Outcome, "", "Evidence collection finished.", code)
 }

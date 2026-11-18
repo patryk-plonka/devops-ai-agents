@@ -11,10 +11,33 @@ type Scope struct {
 }
 
 type Source struct {
-	Status          string `json:"status"`
-	Reason          string `json:"reason,omitempty"`
-	Pages           int    `json:"pages"`
-	RejectedRecords int    `json:"rejected_records"`
+	Status              string       `json:"status"`
+	Reason              string       `json:"reason,omitempty"`
+	Pages               int          `json:"pages"`
+	RejectedRecords     int          `json:"rejected_records"`
+	ExcludedRecords     int          `json:"excluded_records,omitempty"`
+	UnclassifiedRecords int          `json:"unclassified_records,omitempty"`
+	Query               *SourceQuery `json:"query,omitempty"`
+}
+
+// SourceQuery records fixed query policy, never continuation tokens or URLs.
+type SourceQuery struct {
+	ReferenceAt    time.Time  `json:"reference_at"`
+	Cutoff         *time.Time `json:"cutoff,omitempty"`
+	QueryStartTime string     `json:"query_start_time,omitempty"`
+	TimeRange      string     `json:"time_range,omitempty"`
+	// RequestedAt records preparation at the pre-collection checkpoint.
+	RequestedAt *time.Time `json:"requested_at,omitempty"`
+}
+
+func ServiceHealthQuery(reference time.Time) SourceQuery {
+	reference = reference.UTC()
+	cutoff := reference.Add(-30 * 24 * time.Hour)
+	return SourceQuery{ReferenceAt: reference, Cutoff: &cutoff, QueryStartTime: cutoff.Format("1/2/2006")}
+}
+
+func MonitorQuery(reference time.Time) SourceQuery {
+	return SourceQuery{ReferenceAt: reference.UTC(), TimeRange: "30d"}
 }
 
 type Run struct {
@@ -48,5 +71,5 @@ func NewRun(requested, version string) Run {
 	for _, name := range []string{"advisor", "service_health", "azure_monitor"} {
 		sources[name] = Source{Status: "not_checked", Reason: "not_implemented_in_s01"}
 	}
-	return Run{SchemaVersion: 1, ToolVersion: version, Outcome: "in_progress", Coverage: "incomplete", RequestedScope: text, Sources: sources, Diagnostics: []string{}, Redactions: count}
+	return Run{SchemaVersion: 2, ToolVersion: version, Outcome: "in_progress", Coverage: "incomplete", RequestedScope: text, Sources: sources, Diagnostics: []string{}, Redactions: count}
 }

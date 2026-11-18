@@ -168,7 +168,11 @@ func TestFailedAndCancelledReportsAreExplicit(t *testing.T) {
 	}
 }
 func TestSyntheticReportExample(t *testing.T) {
-	b, err := Markdown(example())
+	// Keep the accepted schema-1 snapshot/report pair as a compatibility test.
+	// New runs use schema 2; historical artifacts are never rewritten.
+	r := example()
+	r.SchemaVersion = 1
+	b, err := Markdown(r)
 	if err != nil {
 		t.Fatal(err)
 	}
