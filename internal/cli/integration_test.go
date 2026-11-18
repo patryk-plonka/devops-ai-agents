@@ -643,7 +643,7 @@ func TestGeneratedRunFilesAreIgnored(t *testing.T) {
 			t.Fatalf("generated artifact is not ignored: %s %v %s", rel, err, b)
 		}
 	}
-	for _, path := range []string{"README.md", "AGENTS.md", "internal/cli/integration_test.go", "internal/cli/testdata/fake-az.sh", "internal/report/testdata/run.json", "internal/report/testdata/mixed-report.md", "internal/report/testdata/operational/run.json", "internal/report/testdata/operational/report.md", "context/changes/active-alert-report/verification.md"} {
+	for _, path := range []string{"README.md", "AGENTS.md", "internal/cli/integration_test.go", "internal/cli/testdata/fake-az.sh", "internal/report/testdata/run.json", "internal/report/testdata/mixed-report.md", "internal/report/testdata/operational/run.json", "internal/report/testdata/operational/report.md", "context/archive/2026-11-06-active-alert-report/verification.md"} {
 		b, err := git("check-ignore", "--no-index", "--", path)
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) || exit.ExitCode() != 1 || len(b) != 0 {

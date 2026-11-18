@@ -167,4 +167,4 @@ The PRD contains no open product questions.
 
 - **S-01: Consultant can select one subscription with the existing work identity and receive a scoped Resource Health Markdown report or an explicit access failure.** — Archived 2026-11-06 → `context/archive/2026-11-05-subscription-resource-health-report/`. Lesson: —.
 
-- **S-02: Consultant can see relevant Service Health events and existing Azure Monitor metric/log alerts in the subscription report.** — Operator accepted 2026-11-18; implemented, uncommitted and not yet archived. Acceptance and scenario limits: `context/changes/active-alert-report/verification.md`.
+- **S-02: Consultant can see relevant Service Health events and existing Azure Monitor metric/log alerts in the subscription report.** — Archived 2026-11-18 → `context/archive/2026-11-06-active-alert-report/`. Lesson: —.

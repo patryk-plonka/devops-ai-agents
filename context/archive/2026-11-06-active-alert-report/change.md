@@ -1,9 +1,10 @@
 ---
 change_id: active-alert-report
 title: See active operational alerts
-status: impl_reviewed
+status: archived
 created: 2026-11-06
 updated: 2026-11-18
+archived_at: 2026-11-18T09:51:13Z
 ---
 
 ## Notes

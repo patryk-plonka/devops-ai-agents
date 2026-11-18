@@ -13,7 +13,7 @@ S-01 was accepted on 2026-11-06; its historical outcomes and limits are in
 [the archived verification record](context/archive/2026-11-05-subscription-resource-health-report/verification.md).
 S-02 implementation and automated integrated verification pass. The operator
 confirmed all tests and accepted S-02 on 2026-11-18; see
-[the verification record](context/changes/active-alert-report/verification.md) for
+[the verification record](context/archive/2026-11-06-active-alert-report/verification.md) for
 the confirmation and scenario limits. Synthetic tests remain separate from
 operator acceptance.
 

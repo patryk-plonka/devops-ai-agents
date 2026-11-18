@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-This repository contains a local Go CLI for a consultant's Azure health checks. The command collects inventory, Resource Health, Service Health and Azure Monitor and publishes an explicitly incomplete Markdown report. S-01 manual acceptance was confirmed on 2026-11-06; see @context/archive/2026-11-05-subscription-resource-health-report/verification.md for its limits. S-02 automated integrated checks pass; operator acceptance was confirmed on 2026-11-18. See @context/changes/active-alert-report/verification.md for acceptance and scenario limits.
+This repository contains a local Go CLI for a consultant's Azure health checks. The command collects inventory, Resource Health, Service Health and Azure Monitor and publishes an explicitly incomplete Markdown report. S-01 manual acceptance was confirmed on 2026-11-06; see @context/archive/2026-11-05-subscription-resource-health-report/verification.md for its limits. S-02 automated integrated checks pass; operator acceptance was confirmed on 2026-11-18. See @context/archive/2026-11-06-active-alert-report/verification.md for acceptance and scenario limits.
 
 ## Critical rules
 

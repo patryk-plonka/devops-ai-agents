@@ -118,7 +118,7 @@ failures, cancellation/checkpoint stops, literal operational Markdown and
 schema-1/schema-2 publication. Full native four-source integration, paging,
 failure, privacy, artifact and synchronized process-interruption checks pass.
 The operator confirmed all tests and accepted S-02 on 2026-11-18; see
-[the verification record](../changes/active-alert-report/verification.md) for
+[the verification record](../archive/2026-11-06-active-alert-report/verification.md) for
 confirmation and scenario limits.
 
 The installed local toolchain reported Go 1.27.4 during S-02 work on 2026-11-15.
