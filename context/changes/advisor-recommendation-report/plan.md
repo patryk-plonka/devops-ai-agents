@@ -205,32 +205,32 @@ Use a subscription list with sequential pagination and one local checkpoint per 
 
 #### Automated
 
-- [x] 1.1 Verify scoped identity, structured facts, attribution and privacy with health package tests.
-- [x] 1.2 Verify duplicate, conflict, unknown-field and stable per-instance finding behavior with health package tests.
+- [x] 1.1 Verify scoped identity, structured facts, attribution and privacy with health package tests. — ec3de07
+- [x] 1.2 Verify duplicate, conflict, unknown-field and stable per-instance finding behavior with health package tests. — ec3de07
 
 ### Phase 2: Read-only collection
 
 #### Automated
 
-- [x] 2.1 Verify the native Advisor pager against independent success, empty and malformed response fixtures.
-- [x] 2.2 Verify the exact request boundary and retention of committed pages across continuation and source failures.
+- [x] 2.1 Verify the native Advisor pager against independent success, empty and malformed response fixtures. — ec3de07
+- [x] 2.2 Verify the exact request boundary and retention of committed pages across continuation and source failures. — ec3de07
 
 ### Phase 3: Daily review in Markdown
 
 #### Automated
 
-- [x] 3.1 Verify fifth-collector wiring, initial state, query timing, exit status and committed-snapshot publication.
-- [x] 3.2 Verify deterministic grouped rows, field labels, impact ordering and per-instance evidence links.
-- [x] 3.3 Verify schema-1 and schema-2 golden output and legacy Resource Health finding visibility.
+- [x] 3.1 Verify fifth-collector wiring, initial state, query timing, exit status and committed-snapshot publication. — ec3de07
+- [x] 3.2 Verify deterministic grouped rows, field labels, impact ordering and per-instance evidence links. — ec3de07
+- [x] 3.3 Verify schema-1 and schema-2 golden output and legacy Resource Health finding visibility. — ec3de07
 
 ### Phase 4: Verification and operator acceptance
 
 #### Automated
 
-- [x] 4.1 Verify five-collector success, empty, partial, failure and synchronized interruption scenarios.
-- [x] 4.2 Verify artifact identity, privacy and ignore rules and pass the complete repository check suite.
+- [x] 4.1 Verify five-collector success, empty, partial, failure and synchronized interruption scenarios. — ec3de07
+- [x] 4.2 Verify artifact identity, privacy and ignore rules and pass the complete repository check suite. — ec3de07
 
 #### Manual
 
-- [x] 4.3 Compare the authorized subscription’s completed Advisor list with the matching portal view and inspect the evidence.
-- [x] 4.4 Record explicit operator acceptance or rejection and distinguish live examples from synthetic-only cases.
+- [x] 4.3 Compare the authorized subscription’s completed Advisor list with the matching portal view and inspect the evidence. — ec3de07
+- [x] 4.4 Record explicit operator acceptance or rejection and distinguish live examples from synthetic-only cases. — ec3de07
