@@ -32,7 +32,7 @@ reading the selected subscription's metadata. After validation, each collector
 needs read permission for its own data in that subscription. The report
 identifies denied sources individually and retains results from other sources.
 The operator accepted S-03 on 2026-11-19. The
-[verification record](context/changes/advisor-recommendation-report/verification.md)
+[verification record](context/archive/2026-11-18-advisor-recommendation-report/verification.md)
 describes the live Advisor result and the synthetic scenarios. The program never
 registers providers, repairs permissions, or falls back to another identity.
 

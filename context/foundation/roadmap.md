@@ -3,7 +3,7 @@ project: "AI Agents for Devops"
 version: 1
 status: draft
 created: 2026-11-02
-updated: 2026-11-18
+updated: 2026-11-19
 prd_version: 1
 main_goal: quality
 top_blocker: none
@@ -35,7 +35,7 @@ The user confirmed no known blocker after stack selection and bootstrap. Confirm
 |---|---|---|---|---|---|
 | S-01 | subscription-resource-health-report | Consultant can select one subscription with the existing work identity and receive a scoped Resource Health Markdown report or an explicit access failure. | — | US-01, FR-001, FR-002, FR-003, FR-004 | done |
 | S-02 | active-alert-report | Consultant can see relevant Service Health events and existing Azure Monitor metric/log alerts in the subscription report. | S-01 | US-01, FR-002, FR-003, FR-004 | done |
-| S-03 | advisor-recommendation-report | Consultant can review existing Azure Advisor recommendations and supporting evidence in the subscription report. | S-01 | US-01, FR-002, FR-003, FR-004 | proposed |
+| S-03 | advisor-recommendation-report | Consultant can review existing Azure Advisor recommendations and supporting evidence in the subscription report. | S-01 | US-01, FR-002, FR-003, FR-004 | done |
 | S-04 | complete-health-report | Consultant can run one check and review a consolidated Markdown report of active alerts, existing recommendations, evidence-backed OK resources, and explicit coverage gaps. | S-02, S-03 | US-01, FR-002, FR-003, FR-004 | proposed |
 | S-05 | selected-finding-drafts | Consultant can select findings from the reviewed report and generate ticket or recommendation drafts for manual submission. | S-04 | US-01, FR-004, FR-005 | proposed |
 
@@ -102,7 +102,7 @@ Extend the working report with the two operational-alert sources, preserving sou
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** A recommendation could be overstated as a confirmed fault; preserve what the source actually supports.
-- **Status:** proposed
+- **Status:** done
 
 Add source-provided suggestions as the agreed proactive-check behavior, with references and resource attribution where supported. Distinguish recommendations from observed health failures. Expose inaccessible, failed, or unsupported checks without discarding other report findings. No custom detection rules or saved-baseline comparisons are introduced.
 
@@ -168,3 +168,5 @@ The PRD contains no open product questions.
 - **S-01: Consultant can select one subscription with the existing work identity and receive a scoped Resource Health Markdown report or an explicit access failure.** — Archived 2026-11-06 → `context/archive/2026-11-05-subscription-resource-health-report/`. Lesson: —.
 
 - **S-02: Consultant can see relevant Service Health events and existing Azure Monitor metric/log alerts in the subscription report.** — Archived 2026-11-18 → `context/archive/2026-11-06-active-alert-report/`. Lesson: —.
+
+- **S-03: Consultant can review existing Azure Advisor recommendations and supporting evidence in the subscription report.** — Archived 2026-11-19 → `context/archive/2026-11-18-advisor-recommendation-report/`. Lesson: —.

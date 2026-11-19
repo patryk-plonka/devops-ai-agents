@@ -1,10 +1,10 @@
 ---
 change_id: advisor-recommendation-report
 title: Review existing Azure Advisor recommendations
-status: impl_reviewed
+status: archived
 created: 2026-11-18
 updated: 2026-11-19
-archived_at: null
+archived_at: 2026-11-19T13:26:30Z
 ---
 
 ## Notes
