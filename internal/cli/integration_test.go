@@ -146,6 +146,9 @@ func integrationList(route string, records []string, next string) string {
 		if route == "azure_monitor" {
 			link = "https://management.azure.com:443/subscriptions/" + first + "/providers/Microsoft.AlertsManagement/alerts?api-version=2019-03-01&ctoken=" + url.QueryEscape(next) + "&timeRange=30d"
 		}
+		if route == "advisor" {
+			link = "https://management.azure.com/subscriptions/" + first + "/providers/Microsoft.Advisor/recommendations?api-version=2026-10-01&$skiptoken=" + url.QueryEscape(next) + "&$top=25"
+		}
 		body += fmt.Sprintf(`,"nextLink":%q`, link)
 	}
 	return body + "}"
@@ -164,7 +167,13 @@ func requestSource(req *http.Request) string {
 	if strings.HasSuffix(req.URL.Path, "/providers/Microsoft.AlertsManagement/alerts") {
 		return "azure_monitor"
 	}
-	return "subscription"
+	if strings.HasSuffix(req.URL.Path, "/providers/Microsoft.Advisor/recommendations") {
+		return "advisor"
+	}
+	if req.URL.Path == "/subscriptions/"+first {
+		return "subscription"
+	}
+	return ""
 }
 
 func assertIntegrationArtifacts(t *testing.T, a App, out, diagnostics *bytes.Buffer) health.Run {
@@ -188,8 +197,8 @@ func assertIntegrationArtifacts(t *testing.T, a App, out, diagnostics *bytes.Buf
 	if r.Coverage != "incomplete" || !strings.Contains(text, "No resource is classified overall OK") {
 		t.Fatal("overall coverage claim missing or misleading")
 	}
-	if r.Sources["advisor"].Status != "not_checked" || r.Sources["advisor"].Reason != "not_implemented" || !strings.Contains(text, "advisor") {
-		t.Fatal("unimplemented Advisor presented as covered")
+	if r.SchemaVersion != 3 || !strings.Contains(text, "## Azure Advisor recommendations") {
+		t.Fatal("schema 3 Advisor section missing")
 	}
 	ids := map[string]bool{}
 	for _, e := range r.Evidence {
@@ -222,6 +231,19 @@ func assertIntegrationArtifacts(t *testing.T, a App, out, diagnostics *bytes.Buf
 			t.Fatal("unsupported finding")
 		}
 		check(finding.EvidenceIDs)
+	}
+	review, _, _ := strings.Cut(text, "## Evidence index")
+	_, advisorSection, _ := strings.Cut(review, "## Azure Advisor recommendations")
+	for _, instance := range r.AdvisorInstances {
+		if len(instance.EvidenceIDs) == 0 {
+			t.Fatal("unsupported Advisor instance")
+		}
+		check(instance.EvidenceIDs)
+		for _, id := range instance.EvidenceIDs {
+			if !strings.Contains(advisorSection, "["+id+"](run.json)") {
+				t.Fatal("Advisor evidence link missing from report")
+			}
+		}
 	}
 	for _, gap := range r.Gaps {
 		check(gap.EvidenceIDs)
@@ -643,7 +665,15 @@ func TestGeneratedRunFilesAreIgnored(t *testing.T) {
 			t.Fatalf("generated artifact is not ignored: %s %v %s", rel, err, b)
 		}
 	}
-	for _, path := range []string{"README.md", "AGENTS.md", "internal/cli/integration_test.go", "internal/cli/testdata/fake-az.sh", "internal/report/testdata/run.json", "internal/report/testdata/mixed-report.md", "internal/report/testdata/operational/run.json", "internal/report/testdata/operational/report.md", "context/archive/2026-11-06-active-alert-report/verification.md"} {
+	for _, path := range []string{
+		"README.md", "AGENTS.md", "internal/cli/integration_test.go", "internal/cli/testdata/fake-az.sh",
+		"internal/report/testdata/run.json", "internal/report/testdata/mixed-report.md",
+		"internal/report/testdata/operational/run.json", "internal/report/testdata/operational/report.md",
+		"internal/report/testdata/advisor/run.json", "internal/report/testdata/advisor/report.md",
+		"internal/azure/testdata/advisor-recommendations.json",
+		"context/archive/2026-11-06-active-alert-report/verification.md",
+		"context/changes/advisor-recommendation-report/verification.md",
+	} {
 		b, err := git("check-ignore", "--no-index", "--", path)
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) || exit.ExitCode() != 1 || len(b) != 0 {

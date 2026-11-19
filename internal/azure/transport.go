@@ -8,12 +8,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/patryk-plonka/devops-ai-agents/internal/health"
 )
 
 const inventoryRoute = "inventory"
 const healthRoute = "resource_health"
 const serviceHealthRoute = "service_health"
 const monitorRoute = "azure_monitor"
+const advisorRoute = "advisor"
 
 // ReadTransport validates each attempt before network access. Route narrows a
 // collector to its own operation, including all continuation requests.
@@ -45,20 +48,26 @@ func allowedRequest(req *http.Request, subscription, route, queryStartTime strin
 	case monitorRoute:
 		path += "/providers/Microsoft.AlertsManagement/alerts"
 		version = "2019-03-01"
+	case advisorRoute:
+		path += advisorListPath
+		version = health.AdvisorAPI
 	case "":
 	default:
 		return false
 	}
-	if !strings.EqualFold(u.Path, path) {
+	if !strings.EqualFold(u.Path, path) || route == advisorRoute && u.EscapedPath() != u.Path {
 		return false
 	}
 	q, err := url.ParseQuery(u.RawQuery)
 	if err != nil || len(q["api-version"]) != 1 || q.Get("api-version") != version {
 		return false
 	}
-	if route == serviceHealthRoute || route == monitorRoute {
+	if route == serviceHealthRoute || route == monitorRoute || route == advisorRoute {
 		if req.Body != nil && req.Body != http.NoBody {
 			return false
+		}
+		if route == advisorRoute {
+			return allowedAdvisorQuery(q)
 		}
 		return allowedOperationalQuery(q, route, queryStartTime)
 	}
@@ -114,6 +123,31 @@ func (t ReadTransport) Do(req *http.Request) (*http.Response, error) {
 		return nil, &boundaryError{"read_boundary_rejected"}
 	}
 	return resp, nil
+}
+
+func allowedAdvisorQuery(q url.Values) bool {
+	tokens := 0
+	for key, values := range q {
+		if len(values) != 1 {
+			return false
+		}
+		switch key {
+		case "api-version":
+		case "$skipToken", "$skiptoken":
+			if values[0] == "" {
+				return false
+			}
+			tokens++
+		case "$top":
+			top, err := strconv.ParseUint(values[0], 10, 31)
+			if err != nil || top == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return tokens <= 1 && (!q.Has("$top") || tokens == 1)
 }
 
 // Initial queries are fixed. Continuations may omit initial options, but cannot

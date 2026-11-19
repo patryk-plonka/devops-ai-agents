@@ -9,13 +9,16 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -29,6 +32,9 @@ import (
 
 const signalSub = "11111111-1111-1111-1111-111111111111"
 const signalVM = "/subscriptions/" + signalSub + "/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/vm"
+const signalRecommendation = signalVM + "/providers/Microsoft.Advisor/recommendations/signal"
+
+var signalSources = []string{"inventory", "resource_health", "service_health", "azure_monitor", "advisor"}
 
 type signalCredential struct{}
 
@@ -63,12 +69,15 @@ func (s *signalTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	case "/subscriptions/" + signalSub + "/providers/Microsoft.AlertsManagement/alerts":
 		source, path, version, tokenKey = "azure_monitor", "/providers/Microsoft.AlertsManagement/alerts", "2019-03-01", "ctoken"
 		record = `{"id":"/subscriptions/` + signalSub + `/providers/Microsoft.AlertsManagement/alerts/signal","properties":{"essentials":{"signalType":"Log","monitorCondition":"Fired","alertState":"Closed","description":"body-canary"}}}`
+	case "/subscriptions/" + signalSub + "/providers/Microsoft.Advisor/recommendations":
+		source, path, version, tokenKey = "advisor", "/providers/Microsoft.Advisor/recommendations", "2026-10-01", "$skipToken"
+		record = fmt.Sprintf(`{"id":%q,"properties":{"category":"Cost","impact":"High","recommendationStatus":"New","resourceMetadata":{"resourceId":%q},"shortDescription":{"problem":"body-canary"}}}`, signalRecommendation, signalVM)
 	default:
 		return nil, fmt.Errorf("unexpected operation")
 	}
 	if source != s.source {
 		// Only collectors preceding the interrupted source may run.
-		if source == "azure_monitor" || source == "service_health" && s.source == "inventory" || source == "resource_health" && s.source == "inventory" {
+		if slices.Index(signalSources, source) > slices.Index(signalSources, s.source) {
 			return nil, fmt.Errorf("later collector ran after interruption")
 		}
 		return signalResponse(200, `{"value":[`+record+`]}`), nil
@@ -120,12 +129,17 @@ func (s blockedFinalStore) Save(r *health.Run) error {
 func signalChild(t *testing.T) {
 	mode := os.Getenv("DEVOPS_SIGNAL_MODE")
 	root := os.Getenv("DEVOPS_SIGNAL_ROOT")
+	http.DefaultTransport = &http.Transport{
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			return nil, errors.New("network disabled in signal-test child")
+		},
+	}
 	account := azure.Account{ID: signalSub, Name: "Synthetic", TenantID: "22222222-2222-2222-2222-222222222222", Environment: "AzureCloud"}
 	account.User.Type = "user"
 	transport := &signalTransport{mode: mode, source: os.Getenv("DEVOPS_SIGNAL_SOURCE")}
 	collection := azure.Collection{Base: transport, Credential: func(string) (azcore.TokenCredential, error) { return signalCredential{}, nil }}
 	var startedAt time.Time
-	app := cli.App{Directory: root, In: os.Stdin, Out: os.Stdout, Err: os.Stderr, Discover: func(context.Context) ([]azure.Account, error) { return []azure.Account{account}, nil }, Validate: func(context.Context, azure.Account) error { return nil }, Inventory: collection.Inventory, ResourceHealth: collection.ResourceHealth, AzureMonitor: collection.AzureMonitor}
+	app := cli.App{Directory: root, In: os.Stdin, Out: os.Stdout, Err: os.Stderr, Discover: func(context.Context) ([]azure.Account, error) { return []azure.Account{account}, nil }, Validate: func(context.Context, azure.Account) error { return nil }, Inventory: collection.Inventory, ResourceHealth: collection.ResourceHealth, AzureMonitor: collection.AzureMonitor, Advisor: collection.Advisor}
 	app.ServiceHealth = func(ctx context.Context, id string, emit func(health.Page) error) error {
 		c := collection
 		c.ServiceHealthQuery = health.ServiceHealthQuery(startedAt)
@@ -151,7 +165,7 @@ func TestProcessInterruptPreservesCheckpoint(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("os.Interrupt delivery unavailable on Windows")
 	}
-	for _, source := range []string{"inventory", "service_health", "azure_monitor"} {
+	for _, source := range []string{"inventory", "service_health", "azure_monitor", "advisor"} {
 		for _, mode := range []string{"next page", "retry", "failed final write", "second interrupt"} {
 			t.Run(source+"/"+mode, func(t *testing.T) {
 				root := t.TempDir()
@@ -165,7 +179,11 @@ func TestProcessInterruptPreservesCheckpoint(t *testing.T) {
 				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 				defer cancel()
 				cmd := exec.CommandContext(ctx, binary, "-test.run=^TestProcessInterruptPreservesCheckpoint$")
-				cmd.Env = append(os.Environ(), "DEVOPS_SIGNAL_CHILD=1", "DEVOPS_SIGNAL_ROOT="+root, "DEVOPS_SIGNAL_MODE="+mode, "DEVOPS_SIGNAL_SOURCE="+source)
+				cmd.Env = append(os.Environ(),
+					"PATH="+root, "AZURE_CONFIG_DIR="+root,
+					"DEVOPS_SIGNAL_CHILD=1", "DEVOPS_SIGNAL_ROOT="+root,
+					"DEVOPS_SIGNAL_MODE="+mode, "DEVOPS_SIGNAL_SOURCE="+source,
+				)
 				var stdout bytes.Buffer
 				cmd.Stdout = &stdout
 				stderr, err := cmd.StderrPipe()
@@ -226,9 +244,14 @@ func TestProcessInterruptPreservesCheckpoint(t *testing.T) {
 					return r
 				}
 				checkpoint := read()
-				wantEvidence := map[string]int{"inventory": 1, "service_health": 3, "azure_monitor": 4}[source]
+				wantEvidence := slices.Index(signalSources, source) + 1
 				if len(checkpoint.Evidence) != wantEvidence || checkpoint.Sources[source].Pages != 1 {
 					t.Fatalf("page not committed before next request: pages %d evidence %d", checkpoint.Sources[source].Pages, len(checkpoint.Evidence))
+				}
+				if source == "advisor" && (len(checkpoint.AdvisorInstances) != 1 ||
+					checkpoint.AdvisorInstances[0].FindingID == "" ||
+					!strings.EqualFold(checkpoint.AdvisorInstances[0].EntityID, signalRecommendation)) {
+					t.Fatal("Advisor finding missing before interrupt")
 				}
 				if err := cmd.Process.Signal(os.Interrupt); err != nil {
 					t.Fatal(err)
@@ -252,7 +275,8 @@ func TestProcessInterruptPreservesCheckpoint(t *testing.T) {
 					t.Fatalf("expected nonzero process exit: %v", err)
 				}
 				saved := read()
-				if !reflect.DeepEqual(saved.Evidence, checkpoint.Evidence) || saved.ID != checkpoint.ID {
+				if !reflect.DeepEqual(saved.Evidence, checkpoint.Evidence) ||
+					!reflect.DeepEqual(saved.AdvisorInstances, checkpoint.AdvisorInstances) || saved.ID != checkpoint.ID {
 					t.Fatal("checkpoint evidence lost")
 				}
 				savedBytes, err := os.ReadFile(paths[0])
@@ -262,12 +286,16 @@ func TestProcessInterruptPreservesCheckpoint(t *testing.T) {
 				if strings.Contains(string(savedBytes)+stdout.String()+diagnostics, "canary") {
 					t.Fatal("sensitive output leaked")
 				}
-				for i, name := range []string{"inventory", "resource_health", "service_health", "azure_monitor"} {
+				for i, name := range signalSources {
 					if i >= wantEvidence && saved.Sources[name].Reason != "not_attempted" {
 						t.Fatal("later source started after interrupt")
 					}
 				}
 				if mode == "second interrupt" {
+					status, ok := exit.Sys().(syscall.WaitStatus)
+					if !ok || !status.Signaled() || status.Signal() != syscall.SIGINT {
+						t.Fatalf("expected termination by SIGINT, got %s", exit.ProcessState)
+					}
 					if saved.Revision != checkpoint.Revision+1 || saved.EndedAt != nil {
 						t.Fatal("forced exit damaged last checkpoint")
 					}
@@ -286,6 +314,9 @@ func TestProcessInterruptPreservesCheckpoint(t *testing.T) {
 					return
 				}
 				reportPath := strings.TrimSpace(stdout.String())
+				if reportPath != filepath.Join(filepath.Dir(paths[0]), "report.md") {
+					t.Fatal("stdout did not identify the report beside the saved checkpoint")
+				}
 				b, err := os.ReadFile(reportPath)
 				if err != nil {
 					t.Fatal(err)
@@ -299,8 +330,11 @@ func TestProcessInterruptPreservesCheckpoint(t *testing.T) {
 						t.Fatal("cancelled report lost evidence reference")
 					}
 				}
-				if saved.Outcome != "cancelled" || saved.EndedAt == nil || saved.Sources[source].Reason != "interrupted" || !strings.Contains(text, fmt.Sprintf("Revision: %d", saved.Revision)) || !strings.Contains(text, "Execution outcome: **cancelled**") || !strings.Contains(text, saved.Evidence[0].ID) {
-					t.Fatalf("cancelled report disagrees with saved checkpoint: run=%+v diagnostics=%s report=%s", saved, diagnostics, text)
+				if saved.Outcome != "cancelled" || saved.EndedAt == nil || saved.Sources[source].Reason != "interrupted" ||
+					!strings.Contains(text, "Run ID: "+saved.ID) ||
+					!strings.Contains(text, fmt.Sprintf("\nRevision: %d\n", saved.Revision)) ||
+					!strings.Contains(text, "Execution outcome: **cancelled**") {
+					t.Fatalf("cancelled report disagrees with saved run %s revision %d, outcome %s, source %+v", saved.ID, saved.Revision, saved.Outcome, saved.Sources[source])
 				}
 			})
 		}

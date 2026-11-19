@@ -1,0 +1,43 @@
+{
+  "nextLink": "https://management.azure.com/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.Advisor/recommendations?api-version=2026-10-01&$top=10&$skiptoken=advisor-token-canary%2B%2F%3D%23opaque",
+  "value": [
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-test/providers/Microsoft.Compute/availabilitySets/set-test/providers/Microsoft.Advisor/recommendations/suggestion-one",
+      "name": "name-canary",
+      "type": "Microsoft.Advisor/recommendations",
+      "properties": {
+        "category": "HighAvailability",
+        "impact": "Medium",
+        "recommendationStatus": "New",
+        "impactedValue": "impacted-value-canary",
+        "lastRefreshed": "2026-11-17T21:30:43.3216408+01:00",
+        "lastUpdated": "2026-11-16T15:20:43.3216408Z",
+        "resourceMetadata": {
+          "resourceId": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-test/providers/Microsoft.Compute/availabilitySets/set-test",
+          "source": "assessment-id-canary",
+          "action": {"metadata": {"owner": "owner-canary"}}
+        },
+        "shortDescription": {"problem": "problem-canary", "solution": "solution-canary"},
+        "description": "description-canary",
+        "learnMoreLink": "https://example.invalid/documentation-canary",
+        "remediation": {"additionalProperties": {"uri": "remediation-canary"}},
+        "actions": [{"additionalProperties": {"caption": "action-canary"}}],
+        "extendedProperties": {"identity": "identity-canary"},
+        "notes": "note-canary"
+      }
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.Advisor/recommendations/suggestion-two",
+      "properties": {
+        "recommendationTypeId": "44444444-4444-4444-4444-444444444444",
+        "category": "Cost",
+        "impact": "Low",
+        "recommendationStatus": "Postponed",
+        "impactedValue": "name-guess-canary",
+        "resourceMetadata": {
+          "resourceId": "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/foreign-target-canary"
+        }
+      }
+    }
+  ]
+}

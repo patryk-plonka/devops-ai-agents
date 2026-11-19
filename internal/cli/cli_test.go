@@ -40,7 +40,8 @@ func testApp(t *testing.T) (App, *bytes.Buffer, *bytes.Buffer, *int) {
 		Inventory:      func(context.Context, string, func(health.Page) error) error { return nil },
 		ResourceHealth: func(context.Context, string, func(health.Page) error) error { return nil },
 		ServiceHealth:  func(context.Context, string, func(health.Page) error) error { return nil },
-		AzureMonitor:   func(context.Context, string, func(health.Page) error) error { return nil }}, out, diagnostics, calls
+		AzureMonitor:   func(context.Context, string, func(health.Page) error) error { return nil },
+		Advisor:        func(context.Context, string, func(health.Page) error) error { return nil }}, out, diagnostics, calls
 }
 
 func snapshot(t *testing.T, root string) health.Run {
@@ -87,28 +88,23 @@ func TestCollectedScopeRemainsExplicitlyIncomplete(t *testing.T) {
 		if account.ID != first {
 			t.Fatal("wrong scope")
 		}
-		if snapshot(t, a.Directory).Outcome != "in_progress" {
-			t.Fatal("Azure accessed before initial snapshot")
+		initial := snapshot(t, a.Directory)
+		if initial.Outcome != "in_progress" || initial.SchemaVersion != 3 || initial.Sources["advisor"] != (health.Source{Status: "not_checked", Reason: "not_attempted"}) {
+			t.Fatal("initial checkpoint missing schema or unattempted Advisor state")
 		}
 		return nil
 	}
 	code := a.Run(context.Background(), []string{"health", "check", "--subscription", "cLiEnT"})
 	r := snapshot(t, a.Directory)
-	if code != 0 || out.Len() == 0 || *calls != 2 || r.Outcome != "completed" || r.Coverage != "incomplete" || r.Scope.SubscriptionID != first || r.Revision != 10 {
+	if code != 0 || out.Len() == 0 || *calls != 2 || r.Outcome != "completed" || r.Coverage != "incomplete" || r.Scope.SubscriptionID != first || r.Revision != 12 {
 		t.Fatalf("code %d run %+v output %s", code, r, diag)
 	}
 	if !strings.Contains(diag.String(), "overall coverage: incomplete") || !strings.Contains(diag.String(), "Report saved:") {
 		t.Fatal("misleading preliminary result")
 	}
 	for name, source := range r.Sources {
-		if name != "advisor" {
-			if source.Status != "completed" {
-				t.Fatal("collector incomplete")
-			}
-			continue
-		}
-		if source.Status != "not_checked" {
-			t.Fatal("uncollected source marked checked")
+		if source.Status != "completed" {
+			t.Fatalf("%s incomplete", name)
 		}
 	}
 }
@@ -144,6 +140,9 @@ func TestScopeFailureCategoriesAndPrivacy(t *testing.T) {
 			}
 			if tc.category == "subscription_not_in_session" && r.Scope != nil {
 				t.Fatal("unresolved scope claimed resolved")
+			}
+			if s := r.Sources["advisor"]; s.Status != "not_checked" || s.Reason != "not_attempted" || s.Query != nil {
+				t.Fatal("Advisor policy prepared without validated scope")
 			}
 		})
 	}

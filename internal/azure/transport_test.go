@@ -63,6 +63,91 @@ func TestTransportNeverFollowsRedirects(t *testing.T) {
 	}
 }
 
+func TestAdvisorRequestBoundary(t *testing.T) {
+	next := advisorInitialRequest + "&$skipToken=opaque%2B%2F%3D"
+	for _, tc := range []struct {
+		name, link string
+		allowed    bool
+	}{
+		{"initial", advisorInitialRequest, true},
+		{"documented token", next, true},
+		{"example token and size", advisorNextRequest, true},
+		{"minimum size", next + "&$top=1", true},
+		{"maximum size", next + "&$top=2147483647", true},
+		{"foreign scope", strings.Replace(next, selectedID, otherID, 1), false},
+		{"different host", strings.Replace(next, "management.azure.com", "example.invalid", 1), false},
+		{"explicit port", strings.Replace(next, "management.azure.com", "management.azure.com:443", 1), false},
+		{"plain HTTP", strings.Replace(next, "https:", "http:", 1), false},
+		{"user info", strings.Replace(next, "https://", "https://user@", 1), false},
+		{"relative link", strings.TrimPrefix(next, "https://management.azure.com"), false},
+		{"fragment", next + "#fragment", false},
+		{"other list", listURL(inventoryRoute, ""), false},
+		{"generation endpoint", strings.Replace(next, "/recommendations?", "/generateRecommendations?", 1), false},
+		{"resource group list", strings.Replace(next, "/providers/", "/resourceGroups/group/providers/", 1), false},
+		{"encoded path", strings.Replace(next, "/subscriptions/", "/%73ubscriptions/", 1), false},
+		{"confusable path", strings.Replace(next, "Advisor", "Adviſor", 1), false},
+		{"different version", strings.Replace(next, "2026-10-01", "2026-02-01-preview", 1), false},
+		{"duplicate version", next + "&api-version=2026-10-01", false},
+		{"filter", next + "&$filter=Category+eq+Cost", false},
+		{"extra flag", next + "&includeContext=false", false},
+		{"undocumented token case", strings.Replace(next, "$skipToken", "$SkipToken", 1), false},
+		{"empty token", advisorInitialRequest + "&$skipToken=", false},
+		{"duplicate token", next + "&%24skipToken=another", false},
+		{"mixed token aliases", next + "&$skiptoken=another", false},
+		{"invalid token encoding", advisorInitialRequest + "&$skipToken=%GG", false},
+		{"initial size", advisorInitialRequest + "&$top=10", false},
+		{"empty size", next + "&$top=", false},
+		{"zero size", next + "&$top=0", false},
+		{"negative size", next + "&$top=-1", false},
+		{"fractional size", next + "&$top=1.5", false},
+		{"overflowing size", next + "&$top=2147483648", false},
+		{"duplicate size", next + "&$top=10&$top=10", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, tc.link, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			calls := 0
+			tr := ReadTransport{Subscription: selectedID, Route: advisorRoute, Base: roundTrip(func(*http.Request) (*http.Response, error) {
+				calls++
+				return response(200, `{"value":[]}`), nil
+			})}
+			res, sendErr := tr.Do(req)
+			if res != nil {
+				_ = res.Body.Close()
+			}
+			_, linkErr := continuation(tc.link, selectedID, advisorRoute, "")
+			if tc.allowed && (sendErr != nil || linkErr != nil || calls != 1) {
+				t.Fatalf("allowed request rejected: send %v parse %v calls %d", sendErr, linkErr, calls)
+			}
+			if !tc.allowed && (sendErr == nil || linkErr == nil || calls != 0) {
+				t.Fatalf("forbidden request accepted: send %v parse %v calls %d", sendErr, linkErr, calls)
+			}
+		})
+	}
+
+	tr := ReadTransport{Subscription: selectedID, Route: advisorRoute, Base: roundTrip(func(*http.Request) (*http.Response, error) {
+		t.Fatal("forbidden request reached the transport")
+		return nil, nil
+	})}
+	for _, method := range []string{"POST", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"} {
+		req, _ := http.NewRequest(method, next, nil)
+		if _, err := tr.Do(req); err == nil {
+			t.Fatalf("accepted %s", method)
+		}
+	}
+	req, _ := http.NewRequest(http.MethodGet, next, strings.NewReader("payload-canary"))
+	if _, err := tr.Do(req); err == nil {
+		t.Fatal("accepted GET body")
+	}
+	req, _ = http.NewRequest(http.MethodGet, next, nil)
+	req.Host = "example.invalid"
+	if _, err := tr.Do(req); err == nil {
+		t.Fatal("accepted host override")
+	}
+}
+
 func TestCollectionTransportAndContinuationBoundaries(t *testing.T) {
 	for _, route := range []string{inventoryRoute, healthRoute} {
 		t.Run(route, func(t *testing.T) {

@@ -31,6 +31,7 @@ type Page struct {
 	Health        []HealthInput
 	ServiceHealth []ServiceHealthInput
 	Monitor       []MonitorInput
+	Advisor       []AdvisorInput
 	CollectedAt   time.Time
 }
 type Collector func(context.Context, string, func(Page) error) error
@@ -57,6 +58,7 @@ type Evidence struct {
 	SubscriptionID string              `json:"subscription_id,omitempty"`
 	ServiceHealth  *ServiceHealthFacts `json:"service_health,omitempty"`
 	Monitor        *MonitorFacts       `json:"monitor,omitempty"`
+	Advisor        *AdvisorFacts       `json:"advisor,omitempty"`
 	Disposition    string              `json:"disposition,omitempty"`
 	Limitations    []string            `json:"limitations,omitempty"`
 	StatusID       string              `json:"status_id,omitempty"`

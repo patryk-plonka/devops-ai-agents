@@ -25,16 +25,17 @@ func Markdown(r health.Run) ([]byte, error) {
 	default:
 		return nil, errors.New("invalid final outcome")
 	}
-	evidence := map[string]bool{}
-	for _, e := range r.Evidence {
-		if e.ID == "" || evidence[e.ID] {
+	evidence := make(map[string]*health.Evidence, len(r.Evidence))
+	for i := range r.Evidence {
+		e := &r.Evidence[i]
+		if e.ID == "" || evidence[e.ID] != nil {
 			return nil, errors.New("invalid evidence identity")
 		}
-		evidence[e.ID] = true
+		evidence[e.ID] = e
 	}
 	check := func(ids []string) bool {
 		for _, id := range ids {
-			if !evidence[id] {
+			if evidence[id] == nil {
 				return false
 			}
 		}
@@ -58,6 +59,12 @@ func Markdown(r health.Run) ([]byte, error) {
 	for _, g := range r.Gaps {
 		if !check(g.EvidenceIDs) {
 			return nil, errors.New("unresolved gap evidence")
+		}
+	}
+	hasAdvisor := r.SchemaVersion >= 3
+	if hasAdvisor {
+		if err := validateAdvisorReferences(r, evidence); err != nil {
+			return nil, err
 		}
 	}
 	var b strings.Builder
@@ -108,13 +115,18 @@ func Markdown(r health.Run) ([]byte, error) {
 	if !legacy {
 		writeOperationalSections(&b, r)
 	}
+	if hasAdvisor {
+		writeAdvisorSection(&b, r)
+	}
 	if legacy {
 		b.WriteString("## Observed issues and events\n\nFindings retain source observations, including conflicting or superseded observations. Consult the current-state tables and timestamps before interpreting them as current faults.\n\n")
 	} else {
 		b.WriteString("## Resource Health findings\n\nThese findings retain Resource Health source observations, including conflicting or superseded observations. Consult current-state tables and timestamps before interpreting them as current faults.\n\n")
 	}
 	findings := slices.Clone(r.Findings)
-	if !legacy {
+	if hasAdvisor {
+		findings = slices.DeleteFunc(findings, func(f health.Finding) bool { return f.Source != "" && f.Source != "resource_health" })
+	} else if !legacy {
 		findings = slices.DeleteFunc(findings, func(f health.Finding) bool { return f.Source == "service_health" || f.Source == "azure_monitor" })
 	}
 	sort.Slice(findings, func(i, j int) bool {
@@ -213,6 +225,10 @@ func Markdown(r health.Run) ([]byte, error) {
 		return a.Source+"\x00"+health.CanonicalID(a.ResourceID)+"\x00"+a.ID < c.Source+"\x00"+health.CanonicalID(c.ResourceID)+"\x00"+c.ID
 	})
 	for _, e := range records {
+		if hasAdvisor && e.Source == "advisor" && e.Advisor != nil {
+			writeAdvisorEvidence(&b, e)
+			continue
+		}
 		if !legacy && (e.Source == "service_health" || e.Source == "azure_monitor") {
 			fmt.Fprintf(&b, "### %s\n\n- Record: %s\n- Source: %s; operation: %s; API version: %s.\n- Source entity: %s; selected subscription: %s.\n- Resource attribution: %s.\n- Kind: %s; disposition: %s.\n- Collected (UTC): %s; source reported (UTC): %s; source occurred (UTC): %s.\n", literal(e.ID), refs([]string{e.ID}), literal(e.Source), literal(e.Operation), literal(e.APIVersion), literal(e.EntityID), literal(e.SubscriptionID), resourceAttribution(e.ResourceID), literal(e.Kind), literal(e.Disposition), stamp(&e.CollectedAt), stamp(e.ReportedAt), stamp(e.OccurredAt))
 			writeOperationalFacts(&b, e)

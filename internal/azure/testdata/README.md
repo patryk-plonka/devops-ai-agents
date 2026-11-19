@@ -39,3 +39,19 @@ negative cases. The second synthetic alert is Metric/Fired/Closed/suppressed to
 exercise independent source condition. Context and egress canaries are included
 despite false request flags to prove they cannot enter normalized checkpoints.
 Additional adversarial fields and malformed records are constructed in tests.
+
+## Azure Advisor
+
+[Recommendations List, API 2026-10-01](https://learn.microsoft.com/en-us/rest/api/advisor/recommendations/list?view=rest-advisor-2026-10-01#listrecommendationssubscriptionresourceuri)
+was inspected on 2026-11-18. `advisor-recommendations.json` follows the example's
+`value` and `nextLink` envelope, resource-extension recommendation ID, nested
+`resourceMetadata.resourceId`, separate evaluation and state-change times, and
+`$top` with lowercase `$skiptoken` in the continuation. The first instance omits
+the type GUID as in the example. The initial query lists all cached
+recommendations in the selected subscription.
+
+IDs, resources, times, token and excluded fields are synthetic. The second
+instance adds the documented `recommendationTypeId`, a Postponed status and
+a foreign assessed resource to test typed mapping and attribution. The empty
+and malformed fixtures test the same envelope with an empty list and a
+wrongly typed continuation, respectively.

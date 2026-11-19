@@ -17,22 +17,9 @@ var subscriptionUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-
 // ResourceID validates a scoped ARM resource ID, including nested and extension
 // resources. Keep source spelling; use CanonicalID for case-insensitive joins.
 func ResourceID(id, subscription string) bool {
-	if !subscriptionUUID.MatchString(subscription) || strings.ContainsAny(id, `\%?#`) {
+	parts := scopedARMPath(id, subscription)
+	if len(parts) < 7 {
 		return false
-	}
-	for _, r := range id {
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
-			return false
-		}
-	}
-	parts := strings.Split(id, "/")
-	if len(parts) < 7 || parts[0] != "" || !strings.EqualFold(parts[1], "subscriptions") || !strings.EqualFold(parts[2], subscription) {
-		return false
-	}
-	for _, p := range parts[1:] {
-		if p == "" || p == "." || p == ".." {
-			return false
-		}
 	}
 	i := 3
 	if strings.EqualFold(parts[i], "resourceGroups") {
@@ -54,8 +41,34 @@ func ResourceID(id, subscription string) bool {
 		}
 		i += 2
 	}
+	return true
+}
+
+// scopedARMPath applies the subscription and privacy checks common to ARM IDs.
+// Callers validate the resource shape for their source.
+func scopedARMPath(id, subscription string) []string {
+	if !subscriptionUUID.MatchString(subscription) || strings.ContainsAny(id, `\%?#`) {
+		return nil
+	}
+	for _, r := range id {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return nil
+		}
+	}
+	parts := strings.Split(id, "/")
+	if len(parts) < 3 || parts[0] != "" || !strings.EqualFold(parts[1], "subscriptions") || !strings.EqualFold(parts[2], subscription) {
+		return nil
+	}
+	for _, p := range parts[1:] {
+		if p == "" || p == "." || p == ".." {
+			return nil
+		}
+	}
 	safe, n := SafeText(id)
-	return safe == id && n == 0
+	if safe != id || n != 0 {
+		return nil
+	}
+	return parts
 }
 func CanonicalID(id string) string { return strings.ToLower(id) }
 
@@ -95,9 +108,13 @@ func (r *Run) addEvidence(e Evidence) {
 	identity := e
 	identity.ID = ""
 	identity.CollectedAt = time.Time{}
-	identity.ResourceID = CanonicalID(identity.ResourceID)
+	canonical := CanonicalID
+	if e.Source == advisorSource {
+		canonical = canonicalAdvisorID
+	}
+	identity.ResourceID = canonical(identity.ResourceID)
 	identity.StatusID = CanonicalID(identity.StatusID)
-	identity.EntityID = CanonicalID(identity.EntityID)
+	identity.EntityID = canonical(identity.EntityID)
 	identity.SubscriptionID = CanonicalID(identity.SubscriptionID)
 	e.ID = stableID("ev-", identity)
 	for _, prior := range r.Evidence {
@@ -116,7 +133,7 @@ func (r *Run) NormalizePage(source string, page Page) {
 	if collected.IsZero() {
 		collected = time.Now().UTC()
 	}
-	invalid := 0
+	invalid, unclassified := 0, 0
 	text := func(s string) string { v, n := SafeText(s); r.Redactions += n; return v }
 	switch source {
 	case "inventory":
@@ -187,8 +204,26 @@ func (r *Run) NormalizePage(source string, page Page) {
 				invalid++
 			}
 		}
+	case advisorSource:
+		for _, input := range page.Advisor {
+			if e, valid := r.advisorEvidence(input, collected); valid {
+				if e.Advisor.Status == advisorUnknown {
+					unclassified++
+				}
+				r.addEvidence(e)
+			} else {
+				invalid++
+			}
+		}
 	}
 	s := r.Sources[source]
+	if source == advisorSource {
+		s.UnclassifiedRecords += unclassified
+		if s.FirstPageAt == nil {
+			s.FirstPageAt = &collected
+		}
+		s.LastPageAt = &collected
+	}
 	s.Pages++
 	if invalid > 0 {
 		s.Reason = "invalid_records"
@@ -340,6 +375,7 @@ func (r *Run) RebuildCoverage() {
 		}
 	}
 	r.rebuildOperationalCoverage()
+	r.rebuildAdvisorCoverage()
 	if len(r.Resources) == 0 && len(healthByResource) == 0 && r.Sources["inventory"].Status == "completed" && r.Sources["resource_health"].Status == "completed" {
 		gap("inventory", "", "no_resources_observed", nil)
 	}

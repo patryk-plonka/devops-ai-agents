@@ -30,6 +30,8 @@ func operationalPage(source string, now time.Time) health.Page {
 		p.ServiceHealth = []health.ServiceHealthInput{{ID: "/providers/Microsoft.ResourceHealth/events/synthetic", PropertiesPresent: true, EventType: "ServiceIssue", Status: "Active", LastUpdateTime: &now}}
 	case "azure_monitor":
 		p.Monitor = []health.MonitorInput{{ID: "/subscriptions/" + first + "/providers/Microsoft.AlertsManagement/alerts/synthetic", PropertiesPresent: true, SignalType: "Metric", Condition: "Fired", WorkflowState: "Closed", TargetResourceID: cliVM, LastModifiedTime: &now}}
+	case "advisor":
+		p.Advisor = []health.AdvisorInput{{ID: cliVM + "/providers/Microsoft.Advisor/recommendations/synthetic", Category: "Cost", Impact: "Medium", Status: "New", TargetResourceID: cliVM, LastRefreshed: &now}}
 	}
 	return p
 }
@@ -44,15 +46,18 @@ func assignCollector(a *App, name string, c health.Collector) {
 		a.ServiceHealth = c
 	case "azure_monitor":
 		a.AzureMonitor = c
+	case "advisor":
+		a.Advisor = c
 	default:
 		panic("unknown collector")
 	}
 }
 
-func TestCLIFourSourceOrderPoliciesAndIndependentFailures(t *testing.T) {
-	names := []string{"inventory", "resource_health", "service_health", "azure_monitor"}
-	for failures := 0; failures < 16; failures++ {
-		t.Run(fmt.Sprintf("failures-%04b", failures), func(t *testing.T) {
+func TestCLIFiveSourceOrderPoliciesAndIndependentFailures(t *testing.T) {
+	names := []string{"inventory", "resource_health", "service_health", "azure_monitor", "advisor"}
+	all := 1<<len(names) - 1
+	for failures := 0; failures <= all; failures++ {
+		t.Run(fmt.Sprintf("failures-%05b", failures), func(t *testing.T) {
 			a, out, diag, _ := testApp(t)
 			sequence := []string{}
 			for i, name := range names {
@@ -64,6 +69,12 @@ func TestCLIFourSourceOrderPoliciesAndIndependentFailures(t *testing.T) {
 					saved := snapshot(t, a.Directory)
 					if saved.Sources[name].Status != "in_progress" {
 						t.Fatal("source state not checkpointed before collection")
+					}
+					if name != "advisor" {
+						s := saved.Sources["advisor"]
+						if s.Status != "not_checked" || s.Reason != "not_attempted" || s.Query == nil || s.Query.RequestedAt != nil {
+							t.Fatal("Advisor policy missing or prematurely marked prepared")
+						}
 					}
 					if name == "service_health" || name == "azure_monitor" {
 						q := saved.Sources[name].Query
@@ -77,6 +88,14 @@ func TestCLIFourSourceOrderPoliciesAndIndependentFailures(t *testing.T) {
 							}
 						} else if q.TimeRange != "30d" || q.Cutoff != nil {
 							t.Fatal("wrong Monitor policy")
+						}
+					}
+					if name == "advisor" {
+						q := saved.Sources[name].Query
+						if q == nil || q.Operation != health.AdvisorListOperation || q.APIVersion != health.AdvisorAPI ||
+							q.RequestedAt == nil || q.RequestedAt.Before(saved.StartedAt) || !q.ReferenceAt.Equal(saved.StartedAt) ||
+							q.Cutoff != nil || q.TimeRange != "" || q.QueryStartTime != "" {
+							t.Fatal("Advisor cached list policy was not checkpointed before collection")
 						}
 					}
 					if failures&(1<<i) != 0 {
@@ -99,7 +118,7 @@ func TestCLIFourSourceOrderPoliciesAndIndependentFailures(t *testing.T) {
 			if failures == 0 {
 				wantCode, wantOutcome = 0, "completed"
 			}
-			if failures == 15 {
+			if failures == all {
 				wantCode, wantOutcome = 1, "failed"
 			}
 			code := a.Run(context.Background(), []string{"health", "check", "--subscription", first})
@@ -107,7 +126,7 @@ func TestCLIFourSourceOrderPoliciesAndIndependentFailures(t *testing.T) {
 				t.Fatalf("code %d want %d sequence %v diagnostics %s", code, wantCode, sequence, diag)
 			}
 			r := assertPublished(t, a.Directory, strings.TrimSpace(out.String()))
-			if r.Outcome != wantOutcome || r.Sources["advisor"].Status != "not_checked" || r.Coverage != "incomplete" {
+			if r.Outcome != wantOutcome || r.Coverage != "incomplete" {
 				t.Fatal("wrong execution/coverage")
 			}
 			for i, name := range names {
@@ -212,11 +231,11 @@ func TestCLIOperationalCancellationAndStorageStops(t *testing.T) {
 	}
 }
 
-func TestProductionDefaultsUseFourNativeCollectors(t *testing.T) {
+func TestProductionDefaultsUseFiveNativeCollectors(t *testing.T) {
 	// Real discovery/credential subprocesses use a temporary fake az. All default
 	// HTTP traffic is replaced at the Go boundary before any collector is enabled.
 	a, out, diag, log := integrationApp(t, func(*http.Request) (*http.Response, error) { t.Fatal("unexpected injected transport"); return nil, nil })
-	a.Inventory, a.ResourceHealth, a.ServiceHealth, a.AzureMonitor = nil, nil, nil, nil
+	a.Inventory, a.ResourceHealth, a.ServiceHealth, a.AzureMonitor, a.Advisor = nil, nil, nil, nil, nil
 	a.Validate = nil
 	sequence := []string{}
 	http.DefaultTransport = armFixture(func(req *http.Request) (*http.Response, error) {
@@ -246,6 +265,13 @@ func TestProductionDefaultsUseFourNativeCollectors(t *testing.T) {
 				t.Fatal("default Monitor query not committed")
 			}
 			return armResponse(200, `{"value":[{"id":"/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.AlertsManagement/alerts/default","properties":{"essentials":{"signalType":"Log","monitorCondition":"Fired","alertState":"Acknowledged","description":"description-canary","lastModifiedUserName":"username-canary"},"context":{"SearchQuery":"query-canary"}}}]}`), nil
+		case "/subscriptions/" + first + "/providers/Microsoft.Advisor/recommendations":
+			sequence = append(sequence, "advisor")
+			q := saved.Sources["advisor"].Query
+			if req.URL.RawQuery != "api-version=2026-10-01" || q == nil || q.RequestedAt == nil || q.Operation != health.AdvisorListOperation || q.APIVersion != health.AdvisorAPI {
+				t.Fatal("default Advisor request disagrees with committed query")
+			}
+			return armResponse(200, fmt.Sprintf(`{"value":[{"id":%q,"properties":{"recommendationStatus":"New","category":"Cost","impact":"High","shortDescription":{"solution":"description-canary"},"resourceMetadata":{"resourceId":%q}}}]}`, cliVM+"/providers/Microsoft.Advisor/recommendations/default", cliVM)), nil
 		default:
 			t.Fatal("unexpected default operation")
 			return nil, nil
@@ -254,11 +280,11 @@ func TestProductionDefaultsUseFourNativeCollectors(t *testing.T) {
 	if code := a.Run(integrationContext(t), []string{"health", "check", "--subscription", first, "--debug"}); code != 0 {
 		t.Fatalf("code %d diagnostics %s", code, diag)
 	}
-	if !reflect.DeepEqual(sequence, []string{"inventory", "resource_health", "service_health", "azure_monitor"}) {
+	if !reflect.DeepEqual(sequence, []string{"inventory", "resource_health", "service_health", "azure_monitor", "advisor"}) {
 		t.Fatalf("wrong native order %v", sequence)
 	}
 	r := assertIntegrationArtifacts(t, a, out, diag)
-	if len(r.Findings) != 2 || len(r.Evidence) != 2 || len(r.Observations) != 0 {
+	if len(r.Findings) != 3 || len(r.Evidence) != 3 || len(r.Observations) != 0 || len(r.AdvisorInstances) != 1 {
 		t.Fatal("operational evidence became resource faults or was lost")
 	}
 	b, err := os.ReadFile(filepath.Join(a.Directory, "runs", r.ID, "report.md"))
@@ -266,7 +292,8 @@ func TestProductionDefaultsUseFourNativeCollectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := html.UnescapeString(string(b))
-	if !strings.Contains(text, "workflow response: Acknowledged") || !strings.Contains(text, "HealthAdvisory") {
+	if !strings.Contains(text, "workflow response: Acknowledged") || !strings.Contains(text, "HealthAdvisory") ||
+		!strings.Contains(text, "### New recommendations") || !strings.Contains(text, r.AdvisorInstances[0].FindingID) {
 		t.Fatal("new-source facts missing from published report")
 	}
 	assertSyntheticLogin(t, log, true)

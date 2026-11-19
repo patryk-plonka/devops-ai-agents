@@ -3,11 +3,11 @@
 A local Go CLI for one manually selected public Azure subscription. Azure access
 is read-only and uses the operator's existing Azure CLI user login.
 
-The command collects inventory, Resource Health, Service Health events and
-existing Azure Monitor metric/log alert instances, in that order. Each source
-can fail independently while useful results remain in the report. Advisor and
-ticket drafts remain unimplemented. Overall coverage stays incomplete and no
-resource is classified overall OK.
+The command collects inventory, Resource Health, Service Health events,
+existing Azure Monitor metric/log alert instances, and cached Azure Advisor
+recommendations in that order. Each source can fail independently while useful
+results remain in the report. Overall coverage stays incomplete and no resource
+is classified overall OK.
 
 S-01 was accepted on 2026-11-06; its historical outcomes and limits are in
 [the archived verification record](context/archive/2026-11-05-subscription-resource-health-report/verification.md).
@@ -27,11 +27,13 @@ az login --tenant <tenant-id>
 
 The CLI reads cached subscriptions without refreshing them or switching accounts.
 If the target is missing from the session, sign in or refresh the session externally.
-Only AzureCloud user accounts are supported. Live validation needs permission to
-read the selected subscription's metadata, ARM resource inventory, and subscription
-Resource Health availability statuses, subscription Service Health events, and
-existing Monitor alert instances. Access to the two new sources still requires
-operator verification; a denied source is reported separately. The program never
+Only AzureCloud user accounts are supported. The command validates scope by
+reading the selected subscription's metadata. After validation, each collector
+needs read permission for its own data in that subscription. The report
+identifies denied sources individually and retains results from other sources.
+The operator accepted S-03 on 2026-11-19. The
+[verification record](context/changes/advisor-recommendation-report/verification.md)
+describes the live Advisor result and the synthetic scenarios. The program never
 registers providers, repairs permissions, or falls back to another identity.
 
 Run from this repository or one of its subdirectories:
@@ -60,7 +62,7 @@ Azure access. The directory is Git-ignored and owner-only on supported filesyste
 snapshots use atomic replacements. Failed scope validation is recorded as failed.
 An unavailable filesystem prevents Azure access. No automatic deletion occurs.
 Each successfully collected page is filtered and checkpointed before the next
-request. A later failure retains earlier evidence; each of the four collectors
+request. A later failure retains earlier evidence; each of the five collectors
 is attempted independently unless cancellation or storage failure stops the run.
 Each page has a 60-second deadline including authentication and up to three SDK
 retries. Collection stops at 10,000 pages per
@@ -86,8 +88,7 @@ runs/                              # Git-ignored; private local output
     report.md                      # derived from the saved revision
 ```
 
-New runs use schema 2. Existing run directories remain unchanged, and the
-schema-1 synthetic report remains a rendering regression.
+New runs use schema 3. The renderer supports existing schema-1 and schema-2 snapshots.
 
 Service Health queries events updated in the last 30 days: a fixed UTC reference
 comes from the run start, with a cutoff exactly 30 × 24 hours earlier. The API
@@ -110,11 +111,21 @@ queried by a log rule. Missing or foreign targets remain unknown with an explici
 gap; unsafe target values are omitted. No rule, history, log-query or event-detail
 requests are made.
 
-Both source sections show the configured query and evidence collection times.
+The Service Health and Monitor sections show the configured query and evidence collection times.
 The saved `requested_at` timestamp marks query preparation before collection.
 Sequential pages do not form an atomic snapshot. Completed enumeration,
 known exclusions, unclassified evidence and rejected malformed records remain
 separate; successful empty lists do not establish OK.
+
+Advisor reads the selected subscription's cached recommendation list without a
+date filter or cache refresh. The section shows the saved operation, API version,
+query preparation time, and first and last accepted-page times, including when
+the accepted list is empty. New recommendations appear first. Other statuses
+remain available in a second table. Each type group counts distinct instances
+and ranks by its highest reported impact. A row labeled **Resource unknown**
+has no validated assessed resource. **Last evaluated (UTC)** is the source's
+evaluation time. Advisor suggestions are review items and overall coverage stays
+incomplete even when all five collectors finish.
 
 The normalized record retains the requested scope and resolved subscription/tenant
 identifiers, with defined credential patterns redacted and terminal controls removed.
@@ -125,7 +136,7 @@ and raw SDK errors. Do not commit local run records or put real subscription dat
 in test fixtures. Credential-bearing URLs are filtered across URI schemes,
 including Redis and PostgreSQL connection URLs.
 
-Inspect `resources`, `evidence`, `observations`, `findings`, and `coverage_gaps` in
+Inspect `resources`, `evidence`, `observations`, `findings`, `advisor_instances`, and `coverage_gaps` in
 `run.json`. Findings reference stable evidence IDs with source/API version and
 collection/source timestamps. Exact duplicate observations collapse; conflicting
 states remain undetermined unless source timestamps identify a unique current
@@ -152,12 +163,16 @@ Open `report.md` beside `run.json`. Check their run ID/revision first, then find
 each finding's `ev-...` reference in the JSON `evidence` array. Use `resource_id`,
 `status_id` for Resource Health, `entity_id`/`subscription_id` for operational
 evidence, source/API version, and source/collection timestamps to locate and
-compare the observation in Azure. Keep the files together so sibling links work.
+compare the observation in Azure. For Advisor, follow the row's `ev-...` link
+to `run.json`, find that ID in `evidence`, and use its full `entity_id` and
+`subscription_id` to match the instance in the selected Azure Advisor subscription.
+Align the category and workflow filters when comparing to the portal. The evidence
+index shows evaluation, state-change, and collection times for each observation.
+Keep the files together so sibling links work.
 For a current synthetic example, see
-[report.md](internal/report/testdata/operational/report.md) and its
-sibling [run.json](internal/report/testdata/operational/run.json).
-The schema-1 [mixed-report.md](internal/report/testdata/mixed-report.md) and
-[run.json](internal/report/testdata/run.json) remain historical examples.
+[report.md](internal/report/testdata/advisor/report.md) and its
+sibling [run.json](internal/report/testdata/advisor/run.json).
+The [fixture index](internal/report/testdata/README.md) links to the historical examples.
 
 The first Ctrl+C stops discovery/collection and finalizes a cancelled, incomplete
 report using local storage, retaining completed pages. Selection prompts also
@@ -171,7 +186,7 @@ Exit codes from the built binary:
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Help, or all four implemented collectors completed and the report was saved; overall coverage is still incomplete |
+| 0 | Help, or all five collectors completed and the report was saved with incomplete overall coverage |
 | 1 | Pre-collection authentication/scope-access failure, fatal execution/storage/publication failure, or all collectors failed without useful evidence or any completed collector |
 | 2 | Invalid input, missing/ambiguous CLI-session subscription, unsupported cloud/account, or missing repository context |
 | 3 | At least one implemented collector partial/failed, with useful evidence or a completed collector retained (including collector-local authentication failures) |

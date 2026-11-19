@@ -36,6 +36,7 @@ type App struct {
 	NewStore                    func(string, *health.Run) (Storage, error)
 	Inventory, ResourceHealth   health.Collector
 	ServiceHealth, AzureMonitor health.Collector
+	Advisor                     health.Collector
 	Render                      func(health.Run) ([]byte, error)
 }
 
@@ -90,10 +91,6 @@ func (a App) Run(ctx context.Context, args []string) int {
 		newStore = func(root string, run *health.Run) (Storage, error) { return runstore.New(root, run) }
 	}
 	run := health.NewRun(*requested, a.Version)
-	for _, name := range []string{"service_health", "azure_monitor"} {
-		run.Sources[name] = health.Source{Status: "not_checked", Reason: "not_attempted"}
-	}
-	run.Sources["advisor"] = health.Source{Status: "not_checked", Reason: "not_implemented"}
 	store, err := newStore(root, &run)
 	if err != nil {
 		fmt.Fprintln(a.Err, "Cannot initialize local run storage; no artifact could be saved and no Azure requests were made.")
@@ -247,16 +244,20 @@ func (a App) Run(ctx context.Context, args []string) int {
 	if ctx.Err() != nil {
 		return finish("cancelled", "interrupted", "Run cancelled.", 130)
 	}
-	serviceQuery, monitorQuery := health.ServiceHealthQuery(run.StartedAt), health.MonitorQuery(run.StartedAt)
-	source := run.Sources["service_health"]
-	source.Query = &serviceQuery
-	run.Sources["service_health"] = source
-	source = run.Sources["azure_monitor"]
-	source.Query = &monitorQuery
-	run.Sources["azure_monitor"] = source
+	serviceQuery := health.ServiceHealthQuery(run.StartedAt)
+	for name, query := range map[string]health.SourceQuery{
+		"service_health": serviceQuery,
+		"azure_monitor":  health.MonitorQuery(run.StartedAt),
+		"advisor":        health.AdvisorQuery(run.StartedAt),
+	} {
+		source := run.Sources[name]
+		source.Query = &query
+		run.Sources[name] = source
+	}
 	collection := azure.Collection{ServiceHealthQuery: serviceQuery}
 	inventory, resourceHealth := a.Inventory, a.ResourceHealth
 	serviceHealth, monitor := a.ServiceHealth, a.AzureMonitor
+	advisor := a.Advisor
 	if inventory == nil {
 		inventory = collection.Inventory
 	}
@@ -269,11 +270,15 @@ func (a App) Run(ctx context.Context, args []string) int {
 	if monitor == nil {
 		monitor = collection.AzureMonitor
 	}
+	if advisor == nil {
+		advisor = collection.Advisor
+	}
 	collectors := []health.NamedCollector{
 		{Name: "inventory", Collect: inventory}, {Name: "resource_health", Collect: resourceHealth},
 		{Name: "service_health", Collect: serviceHealth}, {Name: "azure_monitor", Collect: monitor},
+		{Name: "advisor", Collect: advisor},
 	}
-	fmt.Fprintln(a.Err, "Collecting inventory, Resource Health, Service Health, and Azure Monitor evidence...")
+	fmt.Fprintln(a.Err, "Collecting inventory, Resource Health, Service Health, Azure Monitor, and Azure Advisor evidence...")
 	code, err := health.Check(ctx, &run, collectors, store.Save)
 	if err != nil {
 		fmt.Fprintln(a.Err, "Evidence checkpoint write failed; collection stopped.")

@@ -20,6 +20,10 @@ const resource = "/subscriptions/" + sub + "/resourceGroups/g/providers/Microsof
 func ptr(s string) *string { return &s }
 func example() health.Run {
 	r := health.NewRun("Synthetic subscription", "test")
+	r.SchemaVersion = 1
+	for _, name := range []string{"advisor", "service_health", "azure_monitor"} {
+		r.Sources[name] = health.Source{Status: "not_checked", Reason: "not_implemented_in_s01"}
+	}
 	now := time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC)
 	r.ID = "synthetic-run"
 	r.Revision = 9
@@ -169,9 +173,7 @@ func TestFailedAndCancelledReportsAreExplicit(t *testing.T) {
 }
 func TestSyntheticReportExample(t *testing.T) {
 	// Keep the accepted schema-1 snapshot/report pair as a compatibility test.
-	// New runs use schema 2; historical artifacts are never rewritten.
 	r := example()
-	r.SchemaVersion = 1
 	b, err := Markdown(r)
 	if err != nil {
 		t.Fatal(err)

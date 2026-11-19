@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-This repository contains a local Go CLI for a consultant's Azure health checks. The command collects inventory, Resource Health, Service Health and Azure Monitor and publishes an explicitly incomplete Markdown report. S-01 manual acceptance was confirmed on 2026-11-06; see @context/archive/2026-11-05-subscription-resource-health-report/verification.md for its limits. S-02 automated integrated checks pass; operator acceptance was confirmed on 2026-11-18. See @context/archive/2026-11-06-active-alert-report/verification.md for acceptance and scenario limits.
+This repository contains a local Go CLI for a consultant's Azure health checks. The command collects inventory, Resource Health, Service Health, Azure Monitor, and Azure Advisor and publishes an explicitly incomplete Markdown report. S-01 manual acceptance was confirmed on 2026-11-06; see @context/archive/2026-11-05-subscription-resource-health-report/verification.md for its limits. S-02 automated integrated checks pass; operator acceptance was confirmed on 2026-11-18. See @context/archive/2026-11-06-active-alert-report/verification.md for acceptance and scenario limits.
 
 ## Critical rules
 
@@ -8,7 +8,7 @@ Keep Azure access read-only and ticket submission manual. Generate drafts only a
 
 Bind Azure CLI credentials to the selected subscription; leave credential TenantID unset. Disable ARM provider registration and preserve the GET-only public-ARM route/subscription boundary, including continuations and redirects. Do not repair login, permissions, or provider registration automatically.
 
-Filter accepted text/tags before checkpointing and render source strings literally. Never persist raw SDK responses, profile usernames, tokens, or error bodies. Preserve completed pages on failure/cancellation. Publish report.md only from committed run.json; both must identify the same run/revision. No overall OK classification exists in S-01 or S-02.
+Filter accepted text/tags before checkpointing and render source strings literally. Never persist raw SDK responses, profile usernames, tokens, or error bodies. Preserve completed pages on failure/cancellation. Publish report.md only from committed run.json; both must identify the same run/revision. No overall OK classification exists through S-03.
 
 ## Validation
 
@@ -22,7 +22,7 @@ Follow @context/foundation/prd.md for current requirements and @context/foundati
 
 V1 checks one subscription per manually initiated run using the existing work identity. Cover Azure Advisor, Service Health, Resource Health, and existing Azure Monitor alerts. Resolve ambiguous subscription names interactively and report denied subscription access as unsuccessful. Produce the Markdown report before selected drafts.
 
-The current flow is `go run ./cmd/devops-ai-agents health check --subscription "<id-or-full-name>"`; operate from this repository tree after external `az login`. Collectors run sequentially: inventory → Resource Health → Service Health → Azure Monitor. Advisor and drafts remain later slices. Service Health uses a fixed run-start 30-day update cutoff and API date query; Monitor uses timeRange=30d and Fired regardless of workflow/suppression. Keep query provenance, temporal limits and uncertain resource attribution visible. See @README.md for guest login, evidence inspection, exit codes, and interruption behavior.
+The current flow is `go run ./cmd/devops-ai-agents health check --subscription "<id-or-full-name>"`. Operate from this repository tree after external `az login`. The collectors run in order from inventory to Resource Health, Service Health, Azure Monitor, and Azure Advisor. Service Health uses a fixed run-start 30-day update cutoff and API date query. Monitor uses timeRange=30d and Fired regardless of workflow/suppression. Advisor reads the cached subscription list without a date filter or refresh. Keep query provenance, temporal limits and uncertain resource attribution visible. See @README.md for guest login, evidence inspection, exit codes, and interruption behavior.
 
 Baseline comparisons, custom proactive checks, scheduling, concurrent subscription runs, other agents, and a web interface are excluded. Production write access would require the token-burn guard and self-security scanner; it is outside v1.
 

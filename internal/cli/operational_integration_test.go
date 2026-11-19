@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,21 +18,23 @@ import (
 	"github.com/patryk-plonka/devops-ai-agents/internal/runstore"
 )
 
-var implementedSources = []string{"inventory", "resource_health", "service_health", "azure_monitor"}
+var implementedSources = []string{"inventory", "resource_health", "service_health", "azure_monitor", "advisor"}
+
+const integrationAdvisorType = "33333333-3333-4333-8333-333333333333"
 
 // Exercise production defaults, including discovery and credential subprocesses.
 // integrationApp installs an isolated fake az and restores the global transport.
-func fourSourceApp(t *testing.T, wire armFixture) (App, *bytes.Buffer, *bytes.Buffer, string) {
+func nativeSourceApp(t *testing.T, wire armFixture) (App, *bytes.Buffer, *bytes.Buffer, string) {
 	t.Helper()
 	a, out, diag, log := integrationApp(t, func(*http.Request) (*http.Response, error) {
 		t.Fatal("unexpected injected collector")
 		return nil, nil
 	})
-	a.Validate, a.Inventory, a.ResourceHealth, a.ServiceHealth, a.AzureMonitor = nil, nil, nil, nil, nil
+	a.Validate, a.Inventory, a.ResourceHealth, a.ServiceHealth, a.AzureMonitor, a.Advisor = nil, nil, nil, nil, nil, nil
 	http.DefaultTransport = armFixture(func(req *http.Request) (*http.Response, error) {
 		validHost := req.URL.Host == "management.azure.com" || req.URL.Host == "management.azure.com:443"
 		validScope := req.URL.Path == "/subscriptions/"+first || strings.HasPrefix(req.URL.Path, "/subscriptions/"+first+"/")
-		if req.Method != "GET" || !validHost || !validScope || req.Header.Get("Authorization") != "Bearer synthetic-token-canary" {
+		if req.Method != "GET" || req.Body != nil || !validHost || !validScope || requestSource(req) == "" || req.Header.Get("Authorization") != "Bearer synthetic-token-canary" {
 			t.Fatal("request escaped selected-subscription read boundary")
 		}
 		if _, ok := req.Context().Deadline(); !ok {
@@ -52,6 +55,16 @@ func operationalRecord(source string, i int, now time.Time) string {
 		return healthRecord(i)
 	}
 	stamp := now.UTC().Format(time.RFC3339Nano)
+	if source == "advisor" {
+		resource := integrationResource(i)
+		target := resource
+		if i == 0 {
+			target = "/subscriptions/" + second + "/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/advisor-foreign-canary"
+		}
+		impact := []string{"High", "Medium", "Low"}[i%3]
+		return fmt.Sprintf(`{"id":%q,"properties":{"recommendationTypeId":%q,"category":"Cost","impact":%q,"recommendationStatus":"New","lastRefreshed":%q,"lastUpdated":%q,"resourceMetadata":{"resourceId":%q},"shortDescription":{"problem":"advisor-prose-canary"},"extendedProperties":{"secret":"advisor-properties-canary"}}}`,
+			resource+"/providers/Microsoft.Advisor/recommendations/suggestion", integrationAdvisorType, impact, stamp, now.Add(-time.Hour).UTC().Format(time.RFC3339Nano), target)
+	}
 	if source == "service_health" {
 		category := []string{"ServiceIssue", "PlannedMaintenance", "HealthAdvisory", "SecurityAdvisory"}[i%4]
 		status := "Resolved"
@@ -90,30 +103,28 @@ func operationalRecord(source string, i int, now time.Time) string {
 	return fmt.Sprintf(`{"id":"/subscriptions/%s/providers/Microsoft.AlertsManagement/alerts/alert-%03d","properties":{"essentials":{"signalType":"Log","monitorCondition":%q,"alertState":%q,"severity":"Sev2","targetResource":%q,"lastModifiedDateTime":%q,"actionStatus":{"isSuppressed":true},"lastModifiedUserName":"username-canary","description":"description-canary"},"context":{"SearchQuery":"query-canary","SearchResults":"results-canary"}}}`, first, i, condition, []string{"New", "Acknowledged", "Closed"}[i%3], target, stamp)
 }
 
-func TestFourSourceNativeScaleAndPaging(t *testing.T) {
+func TestFiveSourceNativeScaleAndPaging(t *testing.T) {
 	for _, pages := range []int{3, 24} {
 		t.Run(fmt.Sprintf("pages-%d", pages), func(t *testing.T) {
 			counts := map[string]int{}
 			sequence := []string{}
 			var a App
-			a, out, diag, log := fourSourceApp(t, func(req *http.Request) (*http.Response, error) {
+			a, out, diag, log := nativeSourceApp(t, func(req *http.Request) (*http.Response, error) {
 				source := requestSource(req)
 				counts[source]++
 				if source == "subscription" {
 					return armResponse(200, subscriptionResponse()), nil
 				}
+				sequence = append(sequence, source)
 				page := counts[source] - 1
 				if page >= pages {
 					t.Fatal("unbounded paging")
-				}
-				if page == 0 {
-					sequence = append(sequence, source)
 				}
 				saved := snapshot(t, a.Directory)
 				if saved.Sources[source].Status != "in_progress" || saved.Sources[source].Pages != page {
 					t.Fatal("native request preceded committed source/page state")
 				}
-				if source == "service_health" || source == "azure_monitor" {
+				if source == "service_health" || source == "azure_monitor" || source == "advisor" {
 					q := saved.Sources[source].Query
 					if q == nil || q.RequestedAt == nil || !q.ReferenceAt.Equal(saved.StartedAt) {
 						t.Fatal("native query provenance missing")
@@ -124,8 +135,23 @@ func TestFourSourceNativeScaleAndPaging(t *testing.T) {
 					if page == 0 && source == "azure_monitor" && req.URL.Query().Encode() != "api-version=2019-03-01&includeContext=false&includeEgressConfig=false&monitorCondition=Fired&pageCount=100&timeRange=30d" {
 						t.Fatal("wrong Monitor query")
 					}
+					if source == "advisor" {
+						if q.Operation != "Recommendations.List" || q.APIVersion != "2026-10-01" || q.Cutoff != nil || q.QueryStartTime != "" || q.TimeRange != "" {
+							t.Fatal("wrong saved Advisor query policy")
+						}
+						wantQuery := url.Values{"api-version": {"2026-10-01"}}
+						if page > 0 {
+							wantQuery.Set("$skiptoken", fmt.Sprintf("page-%d-token-canary", page))
+							wantQuery.Set("$top", "25")
+						}
+						if req.URL.Host != "management.azure.com" ||
+							req.URL.Path != "/subscriptions/"+first+"/providers/Microsoft.Advisor/recommendations" ||
+							req.URL.Query().Encode() != wantQuery.Encode() {
+							t.Fatal("wrong Advisor request")
+						}
+					}
 				}
-				if page > 0 {
+				if page > 0 && source != "advisor" {
 					key := "$skiptoken"
 					if source == "service_health" {
 						key = "$skipToken"
@@ -139,6 +165,9 @@ func TestFourSourceNativeScaleAndPaging(t *testing.T) {
 				size := 2
 				if source == "inventory" || source == "resource_health" {
 					size = 120
+				}
+				if source == "advisor" {
+					size = 10
 				}
 				if pages == 24 {
 					size = 1
@@ -157,12 +186,18 @@ func TestFourSourceNativeScaleAndPaging(t *testing.T) {
 				t.Fatalf("exit %d: %s", code, diag)
 			}
 			r := assertIntegrationArtifacts(t, a, out, diag)
-			if !reflect.DeepEqual(sequence, implementedSources) {
-				t.Fatalf("wrong source order %v", sequence)
+			wantSequence := make([]string, 0, len(implementedSources)*pages)
+			for _, source := range implementedSources {
+				for range pages {
+					wantSequence = append(wantSequence, source)
+				}
 			}
-			wantResources, wantEvidence := 360, 732
+			if !slices.Equal(sequence, wantSequence) {
+				t.Fatalf("wrong page order: got %v, want %v", sequence, wantSequence)
+			}
+			wantResources, wantEvidence, wantAdvisor := 360, 762, 30
 			if pages == 24 {
-				wantResources, wantEvidence = 24, 96
+				wantResources, wantEvidence, wantAdvisor = 24, 120, 24
 			}
 			if len(r.Resources) != wantResources || len(r.Observations) != wantResources || len(r.Evidence) != wantEvidence {
 				t.Fatalf("scale loss: resources %d observations %d evidence %d", len(r.Resources), len(r.Observations), len(r.Evidence))
@@ -175,6 +210,30 @@ func TestFourSourceNativeScaleAndPaging(t *testing.T) {
 			}
 			if active != 7 {
 				t.Fatalf("active operational findings %d want 7", active)
+			}
+			advisor := r.Sources["advisor"]
+			if advisor.Query == nil || advisor.Query.RequestedAt == nil ||
+				advisor.FirstPageAt == nil || advisor.LastPageAt == nil ||
+				advisor.FirstPageAt.Before(*advisor.Query.RequestedAt) || advisor.LastPageAt.Before(*advisor.FirstPageAt) {
+				t.Fatal("Advisor accepted page timing missing or out of order")
+			}
+			if len(r.AdvisorInstances) != wantAdvisor {
+				t.Fatalf("Advisor instances %d want %d", len(r.AdvisorInstances), wantAdvisor)
+			}
+			for _, row := range r.AdvisorInstances {
+				if row.Status != "New" || row.TypeID != integrationAdvisorType || row.FindingID == "" || len(row.EvidenceIDs) != 1 {
+					t.Fatal("Advisor grouping lost an individual finding or evidence reference")
+				}
+				if strings.HasPrefix(row.EntityID, strings.ToLower(integrationResource(0))+"/") && row.ResourceID != "" {
+					t.Fatal("foreign Advisor target retained")
+				}
+			}
+			reportBytes, err := os.ReadFile(strings.TrimSpace(out.String()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(reportBytes), fmt.Sprintf("**Type %s (%d)**", integrationAdvisorType, wantAdvisor)) {
+				t.Fatal("Advisor group count missing from published report")
 			}
 			for _, source := range implementedSources {
 				if r.Sources[source].Status != "completed" || r.Sources[source].Pages != pages || counts[source] != pages {
@@ -198,12 +257,12 @@ func TestFourSourceNativeScaleAndPaging(t *testing.T) {
 	}
 }
 
-func TestFourSourceNativeFailureIsolation(t *testing.T) {
-	for _, mask := range []int{0, 4, 8, 12, 3, 15} {
-		t.Run(fmt.Sprintf("failures-%04b", mask), func(t *testing.T) {
+func TestFiveSourceNativeFailureIsolation(t *testing.T) {
+	for _, mask := range []int{0, 4, 8, 12, 3, 15, 16, 31} {
+		t.Run(fmt.Sprintf("failures-%05b", mask), func(t *testing.T) {
 			counts := map[string]int{}
 			var a App
-			a, out, diag, log := fourSourceApp(t, func(req *http.Request) (*http.Response, error) {
+			a, out, diag, log := nativeSourceApp(t, func(req *http.Request) (*http.Response, error) {
 				source := requestSource(req)
 				counts[source]++
 				if source == "subscription" {
@@ -223,14 +282,14 @@ func TestFourSourceNativeFailureIsolation(t *testing.T) {
 			wantCode, outcome := 3, "partial"
 			if mask == 0 {
 				wantCode, outcome = 0, "completed"
-			} else if mask == 15 {
+			} else if mask == 31 {
 				wantCode, outcome = 1, "failed"
 			}
 			if code := a.Run(integrationContext(t), []string{"health", "check", "--subscription", first, "--debug"}); code != wantCode {
 				t.Fatalf("exit %d want %d: %s", code, wantCode, diag)
 			}
 			r := assertIntegrationArtifacts(t, a, out, diag)
-			wantEvidence := 4
+			wantEvidence := len(implementedSources)
 			for i, source := range implementedSources {
 				wantStatus, reason := "completed", ""
 				if mask&(1<<i) != 0 {
@@ -247,23 +306,42 @@ func TestFourSourceNativeFailureIsolation(t *testing.T) {
 			if r.Outcome != outcome || len(r.Evidence) != wantEvidence {
 				t.Fatal("outcome/evidence lost")
 			}
+			if mask&16 == 0 && len(r.AdvisorInstances) != 1 {
+				t.Fatal("earlier source failure lost the Advisor recommendation")
+			}
+			if mask&16 != 0 {
+				b, err := os.ReadFile(strings.TrimSpace(out.String()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				reportText := string(b)
+				if len(r.AdvisorInstances) != 0 || !strings.Contains(reportText, "The cached list could not be read") ||
+					strings.Contains(reportText, "The completed cached list contained no recommendations") {
+					t.Fatal("Advisor denial did not remain explicit in the report")
+				}
+			}
 			assertSyntheticLogin(t, log, true)
 		})
 	}
 	t.Run("all empty", func(t *testing.T) {
 		counts := map[string]int{}
-		a, out, diag, _ := fourSourceApp(t, func(req *http.Request) (*http.Response, error) {
+		var sequence []string
+		a, out, diag, _ := nativeSourceApp(t, func(req *http.Request) (*http.Response, error) {
 			source := requestSource(req)
 			counts[source]++
 			if source == "subscription" {
 				return armResponse(200, subscriptionResponse()), nil
 			}
+			sequence = append(sequence, source)
 			return armResponse(200, `{"value":[]}`), nil
 		})
 		if code := a.Run(integrationContext(t), []string{"health", "check", "--subscription", first}); code != 0 {
 			t.Fatalf("exit %d: %s", code, diag)
 		}
 		r := assertIntegrationArtifacts(t, a, out, diag)
+		if !slices.Equal(sequence, implementedSources) {
+			t.Fatalf("wrong empty source order: got %v, want %v", sequence, implementedSources)
+		}
 		if len(r.Evidence) != 0 || len(r.Findings) != 0 || r.Outcome != "completed" {
 			t.Fatal("empty lists invented evidence")
 		}
@@ -273,16 +351,29 @@ func TestFourSourceNativeFailureIsolation(t *testing.T) {
 			}
 		}
 		assertGap(t, r, "no_resources_observed")
+		b, err := os.ReadFile(strings.TrimSpace(out.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		advisor := r.Sources["advisor"]
+		if advisor.FirstPageAt == nil || advisor.LastPageAt == nil || !advisor.FirstPageAt.Equal(*advisor.LastPageAt) ||
+			!strings.Contains(string(b), "The completed cached list contained no recommendations") {
+			t.Fatal("successful empty Advisor page or its provenance missing")
+		}
 	})
 }
 
-func TestFourSourceNativeOperationalPageFailures(t *testing.T) {
-	for _, source := range []string{"service_health", "azure_monitor"} {
-		for _, scenario := range []string{"401", "403", "404", "429", "timeout", "unsafe host", "wrong subscription", "redirect", "repeat", "invalid envelope", "mixed records"} {
+func TestFiveSourceNativeOperationalPageFailures(t *testing.T) {
+	for _, source := range []string{"service_health", "azure_monitor", "advisor"} {
+		scenarios := []string{"401", "403", "404", "429", "timeout", "unsafe host", "wrong subscription", "redirect", "repeat", "invalid envelope", "mixed records"}
+		if source == "advisor" {
+			scenarios = []string{"403", "wrong subscription", "invalid envelope", "mixed records"}
+		}
+		for _, scenario := range scenarios {
 			t.Run(source+"/"+scenario, func(t *testing.T) {
 				counts := map[string]int{}
 				var a App
-				a, out, diag, _ := fourSourceApp(t, func(req *http.Request) (*http.Response, error) {
+				a, out, diag, _ := nativeSourceApp(t, func(req *http.Request) (*http.Response, error) {
 					route := requestSource(req)
 					counts[route]++
 					if route == "subscription" {
@@ -320,6 +411,9 @@ func TestFourSourceNativeOperationalPageFailures(t *testing.T) {
 					case "invalid envelope":
 						return armResponse(200, `{"value":"body-canary"}`), nil
 					case "mixed records":
+						if source == "advisor" {
+							record = operationalRecord(route, 1, snapshot(t, a.Directory).StartedAt)
+						}
 						foreign := strings.ReplaceAll(record, first, second)
 						if source == "service_health" {
 							foreign = strings.Replace(record, "/providers/Microsoft.ResourceHealth/events/", "/subscriptions/"+second+"/providers/Microsoft.ResourceHealth/events/", 1)
@@ -357,7 +451,24 @@ func TestFourSourceNativeOperationalPageFailures(t *testing.T) {
 						t.Fatal("malformed/foreign siblings not counted")
 					}
 				}
-				if r.Sources[source].Status != "partial" || r.Sources[source].Reason != reason || r.Sources[source].Pages != pages || counts[source] != calls || len(r.Evidence) != 4 || len(r.Findings) != 3 {
+				wantEvidence, wantFindings := 5, 4
+				if source == "advisor" {
+					wantInstances := 1
+					if scenario == "mixed records" {
+						wantEvidence, wantFindings, wantInstances = 6, 5, 2
+					}
+					if len(r.AdvisorInstances) != wantInstances {
+						t.Fatal("partial Advisor collection lost valid recommendations")
+					}
+					b, err := os.ReadFile(strings.TrimSpace(out.String()))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !strings.Contains(string(b), "Coverage is limited to accepted pages") {
+						t.Fatal("partial Advisor coverage hidden in report")
+					}
+				}
+				if r.Sources[source].Status != "partial" || r.Sources[source].Reason != reason || r.Sources[source].Pages != pages || counts[source] != calls || len(r.Evidence) != wantEvidence || len(r.Findings) != wantFindings {
 					t.Fatalf("lost retained evidence/state: source %+v requests %v evidence %d findings %d", r.Sources[source], counts, len(r.Evidence), len(r.Findings))
 				}
 				for _, other := range implementedSources {
@@ -371,12 +482,13 @@ func TestFourSourceNativeOperationalPageFailures(t *testing.T) {
 	}
 }
 
-func TestFourSourceNativeStorageAndPublicationFailures(t *testing.T) {
-	for _, mode := range []string{"service_health", "azure_monitor", "final write", "publication"} {
+func TestFiveSourceNativeStorageAndPublicationFailures(t *testing.T) {
+	for _, mode := range []string{"service_health", "azure_monitor", "advisor", "final write", "publication"} {
 		t.Run(mode, func(t *testing.T) {
 			counts := map[string]int{}
+			var previousRevision int
 			var a App
-			a, out, diag, _ := fourSourceApp(t, func(req *http.Request) (*http.Response, error) {
+			a, out, diag, _ := nativeSourceApp(t, func(req *http.Request) (*http.Response, error) {
 				source := requestSource(req)
 				counts[source]++
 				if source == "subscription" {
@@ -389,7 +501,11 @@ func TestFourSourceNativeStorageAndPublicationFailures(t *testing.T) {
 						t.Fatal("continued after failed checkpoint")
 					}
 				}
-				return armResponse(200, integrationList(source, []string{operationalRecord(source, counts[source]-1, snapshot(t, a.Directory).StartedAt)}, next)), nil
+				saved := snapshot(t, a.Directory)
+				if source == mode && counts[source] == 2 {
+					previousRevision = saved.Revision
+				}
+				return armResponse(200, integrationList(source, []string{operationalRecord(source, counts[source]-1, saved.StartedAt)}, next)), nil
 			})
 			a.NewStore = func(root string, r *health.Run) (Storage, error) {
 				s, err := runstore.New(root, r)
@@ -402,17 +518,35 @@ func TestFourSourceNativeStorageAndPublicationFailures(t *testing.T) {
 				t.Fatalf("failed storage/publication feedback: exit %d %s", code, diag)
 			}
 			r := snapshot(t, a.Directory)
-			want := 4
-			if mode == "service_health" {
-				want = 3
-				if counts["azure_monitor"] != 0 || counts[mode] != 2 || r.Sources[mode].Pages != 1 {
-					t.Fatal("storage failure did not stop reads")
+			want := len(implementedSources)
+			for i, source := range implementedSources {
+				if source != mode {
+					continue
 				}
-			} else if mode == "azure_monitor" && (counts[mode] != 2 || r.Sources[mode].Pages != 1) {
-				t.Fatal("failed Monitor page replaced committed page")
+				want = i + 1
+				if counts[mode] != 2 || r.Sources[mode].Pages != 1 || r.Revision != previousRevision {
+					t.Fatal("failed page replaced committed page")
+				}
+				for _, later := range implementedSources[i+1:] {
+					if counts[later] != 0 || r.Sources[later].Reason != "not_attempted" {
+						t.Fatal("storage failure did not stop later collectors")
+					}
+				}
 			}
-			if len(r.Evidence) != want || mode != "publication" && r.EndedAt != nil {
+			if len(r.Evidence) != want || (r.EndedAt != nil) != (mode == "publication") {
 				t.Fatal("last usable native checkpoint lost")
+			}
+			if mode == "advisor" || mode == "final write" || mode == "publication" {
+				if len(r.AdvisorInstances) != 1 || r.Sources["advisor"].Pages != 1 {
+					t.Fatal("Advisor checkpoint lost")
+				}
+			}
+			saved, err := os.ReadFile(filepath.Join(a.Directory, "runs", r.ID, "run.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(saved), "canary") || strings.Contains(string(saved), second) {
+				t.Fatal("private fields leaked into retained checkpoint")
 			}
 			if _, err := os.Stat(filepath.Join(a.Directory, "runs", r.ID, "report.md")); !errors.Is(err, os.ErrNotExist) {
 				t.Fatal("claimed a report after storage/publication failure")
@@ -421,16 +555,16 @@ func TestFourSourceNativeStorageAndPublicationFailures(t *testing.T) {
 	}
 }
 
-func TestFourSourceNativeUnknownAndConflictingObservations(t *testing.T) {
+func TestFiveSourceNativeUnknownAndConflictingObservations(t *testing.T) {
 	counts := map[string]int{}
 	var a App
-	a, out, diag, _ := fourSourceApp(t, func(req *http.Request) (*http.Response, error) {
+	a, out, diag, _ := nativeSourceApp(t, func(req *http.Request) (*http.Response, error) {
 		source := requestSource(req)
 		counts[source]++
 		if source == "subscription" {
 			return armResponse(200, subscriptionResponse()), nil
 		}
-		if source == "inventory" || source == "resource_health" {
+		if source == "inventory" || source == "resource_health" || source == "advisor" {
 			return armResponse(200, `{"value":[]}`), nil
 		}
 		saved := snapshot(t, a.Directory)

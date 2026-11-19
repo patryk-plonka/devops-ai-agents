@@ -29,7 +29,7 @@ func assertPublished(t *testing.T, root, path string) health.Run {
 		t.Fatal(err)
 	}
 	text := html.UnescapeString(string(b))
-	for _, want := range []string{"Run ID: " + r.ID, fmt.Sprintf("Revision: %d", r.Revision), "Execution outcome: **" + r.Outcome + "**", "INCOMPLETE coverage"} {
+	for _, want := range []string{"Run ID: " + r.ID, fmt.Sprintf("\nRevision: %d\n", r.Revision), "Execution outcome: **" + r.Outcome + "**", "INCOMPLETE coverage"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("report/snapshot disagree: %q", want)
 		}

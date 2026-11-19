@@ -36,8 +36,8 @@ func normalizeMonitor(r *Run, inputs ...MonitorInput) {
 
 func TestOperationalQueryPoliciesAndSchema(t *testing.T) {
 	r := NewRun("synthetic", "test")
-	if r.SchemaVersion != 2 {
-		t.Fatal("new runs must use schema 2")
+	if r.SchemaVersion != 3 {
+		t.Fatal("new runs must use schema 3")
 	}
 	reference := operationalReference.In(time.FixedZone("test", 3600))
 	q := ServiceHealthQuery(reference)

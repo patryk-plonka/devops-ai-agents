@@ -114,9 +114,12 @@ func continuation(link, subscription, route, queryStartTime string) (string, err
 		return "", &boundaryError{"unsafe_continuation"}
 	}
 	q, _ := url.ParseQuery(u.RawQuery)
-	if route == healthRoute && q.Has("$skipToken") {
+	if (route == healthRoute || route == advisorRoute) && q.Has("$skipToken") {
 		q.Set("$skiptoken", q.Get("$skipToken"))
 		q.Del("$skipToken")
+	}
+	if route == advisorRoute {
+		q.Del("$top")
 	}
 	// Optional repeated fixed options and the explicit default port do not make
 	// an operational continuation a new page identity.
@@ -162,12 +165,12 @@ func pages[T any](ctx context.Context, c Collection, subscription, route, initia
 			return collectionFailure(err)
 		}
 		page, err := pager.NextPage(bounded)
-		deadlineErr := bounded.Err()
+		// A successful decode can finish after the page deadline.
+		if contextErr := bounded.Err(); contextErr != nil {
+			err = contextErr
+		}
 		cancel()
 		if err != nil {
-			if deadlineErr != nil {
-				return collectionFailure(deadlineErr)
-			}
 			return collectionFailure(err)
 		}
 		next, err := accept(page) // normalization and checkpoint precede next request

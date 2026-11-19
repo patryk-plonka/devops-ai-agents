@@ -102,7 +102,7 @@ func TestIndependentCollectionAndCommittedEvidence(t *testing.T) {
 			}
 			for _, name := range []string{"advisor", "service_health", "azure_monitor"} {
 				s := saved.Sources[name]
-				if s.Status != "not_checked" || s.Reason != "not_implemented_in_s01" {
+				if s.Status != "not_checked" || s.Reason != "not_attempted" {
 					t.Fatal("invented source coverage")
 				}
 			}

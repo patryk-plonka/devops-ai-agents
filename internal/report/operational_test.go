@@ -21,6 +21,7 @@ import (
 // uncertainty, old/conflicting observations and filtered source markup.
 func operationalExample() health.Run {
 	r := example()
+	r.SchemaVersion = 2
 	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
 	r.ID = "synthetic-operational-run"
 	r.Revision = 17
@@ -248,7 +249,7 @@ func TestSyntheticOperationalReportExample(t *testing.T) {
 }
 
 func TestReportExampleLinksResolveToMatchingSnapshot(t *testing.T) {
-	for _, reportPath := range []string{"testdata/mixed-report.md", "testdata/operational/report.md"} {
+	for _, reportPath := range []string{"testdata/mixed-report.md", "testdata/operational/report.md", "testdata/advisor/report.md"} {
 		t.Run(reportPath, func(t *testing.T) {
 			b, err := os.ReadFile(reportPath)
 			if err != nil {

@@ -28,6 +28,9 @@ func listURL(route, token string) string {
 	if route == monitorRoute {
 		path, version = "/providers/Microsoft.AlertsManagement/alerts", "2019-03-01"
 	}
+	if route == advisorRoute {
+		path, version = "/providers/Microsoft.Advisor/recommendations", "2026-10-01"
+	}
 	result := "https://management.azure.com/subscriptions/" + selectedID + path + "?api-version=" + version
 	if token == "" {
 		if route == serviceHealthRoute {
@@ -68,6 +71,8 @@ func collectorFor(c Collection, route string) health.Collector {
 		return c.ServiceHealth
 	case monitorRoute:
 		return c.AzureMonitor
+	case advisorRoute:
+		return c.Advisor
 	default:
 		panic("unknown test collector")
 	}
@@ -250,7 +255,7 @@ func TestLaterPageFailuresPreserveFirstPage(t *testing.T) {
 	}
 }
 func TestCollectorDeadlineAndCheckpointFailure(t *testing.T) {
-	for _, route := range []string{inventoryRoute, healthRoute, serviceHealthRoute, monitorRoute} {
+	for _, route := range []string{inventoryRoute, healthRoute, serviceHealthRoute, monitorRoute, advisorRoute} {
 		t.Run(route, func(t *testing.T) {
 			calls := 0
 			c := collection(t, func(*http.Request) (*http.Response, error) {
@@ -274,7 +279,7 @@ func TestCollectorDeadlineAndCheckpointFailure(t *testing.T) {
 }
 
 func TestCollectorCancellationStopsBeforeNextRequest(t *testing.T) {
-	for _, route := range []string{inventoryRoute, healthRoute, serviceHealthRoute, monitorRoute} {
+	for _, route := range []string{inventoryRoute, healthRoute, serviceHealthRoute, monitorRoute, advisorRoute} {
 		t.Run(route, func(t *testing.T) {
 			calls := 0
 			ctx, cancel := context.WithCancel(context.Background())

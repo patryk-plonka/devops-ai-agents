@@ -82,8 +82,8 @@ func TestMixedSchemaPagesRetainValidRecordsAndCheckpoint(t *testing.T) {
 }
 
 func TestMalformedPageEnvelopesFailWithoutRetry(t *testing.T) {
-	for _, route := range []string{inventoryRoute, healthRoute, serviceHealthRoute, monitorRoute} {
-		for _, body := range []string{`{invalid`, `null`, `[]`, `{}`, `{"value":null}`, `{"value":{}}`, `{"value":[],"nextLink":{"bad":"envelope-canary"}}`} {
+	for _, route := range []string{inventoryRoute, healthRoute, serviceHealthRoute, monitorRoute, advisorRoute} {
+		for _, body := range []string{`{invalid`, `null`, `[]`, `{}`, `{"value":null}`, `{"value":{}}`, `{"value":[],"nextLink":{"bad":"envelope-canary"}}`, `{"value":[]}{"value":[]}`} {
 			t.Run(route+"/"+body, func(t *testing.T) {
 				calls := 0
 				c := collection(t, func(*http.Request) (*http.Response, error) { calls++; return response(200, body), nil })

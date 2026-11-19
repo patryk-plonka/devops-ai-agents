@@ -49,7 +49,12 @@ func filterRecords(body []byte, route string) ([]byte, error) {
 		return nil, fail("invalid_response", "Source returned an invalid collection page.", 1)
 	}
 	var envelope map[string]json.RawMessage
-	if json.Unmarshal(body, &envelope) != nil || envelope == nil {
+	if route == advisorRoute {
+		envelope = decodeAdvisorEnvelope(body)
+	} else if json.Unmarshal(body, &envelope) != nil {
+		return invalid()
+	}
+	if envelope == nil {
 		return invalid()
 	}
 	var records []json.RawMessage
@@ -79,6 +84,9 @@ func filterRecords(body []byte, route string) ([]byte, error) {
 		case healthRoute:
 			var status armresourcehealth.AvailabilityStatus
 			err = json.Unmarshal(raw, &status)
+		case advisorRoute:
+			var recommendation advisorRecommendation
+			err = json.Unmarshal(raw, &recommendation)
 		default:
 			return invalid()
 		}
@@ -87,7 +95,7 @@ func filterRecords(body []byte, route string) ([]byte, error) {
 			changed = true
 		}
 	}
-	if !changed {
+	if !changed && route != advisorRoute {
 		return body, nil
 	}
 	// RawMessage contains valid JSON, so marshaling these two containers cannot
@@ -95,4 +103,40 @@ func filterRecords(body []byte, route string) ([]byte, error) {
 	envelope["value"], _ = json.Marshal(records)
 	filtered, _ := json.Marshal(envelope)
 	return filtered, nil
+}
+
+// Keep exact wire keys so the pager sees the same fields as the filter.
+// Reading the object members in order lets us detect duplicates before a
+// later field can overwrite an earlier value.
+func decodeAdvisorEnvelope(body []byte) map[string]json.RawMessage {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	if start, err := decoder.Token(); err != nil || start != json.Delim('{') {
+		return nil
+	}
+	envelope := make(map[string]json.RawMessage, 2)
+	for decoder.More() {
+		token, err := decoder.Token()
+		key, ok := token.(string)
+		if err != nil || !ok {
+			return nil
+		}
+		var raw json.RawMessage
+		if decoder.Decode(&raw) != nil {
+			return nil
+		}
+		if key != "value" && key != "nextLink" {
+			continue
+		}
+		if _, exists := envelope[key]; exists {
+			return nil
+		}
+		envelope[key] = raw
+	}
+	if end, err := decoder.Token(); err != nil || end != json.Delim('}') {
+		return nil
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return nil
+	}
+	return envelope
 }

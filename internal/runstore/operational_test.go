@@ -14,8 +14,8 @@ import (
 	"github.com/patryk-plonka/devops-ai-agents/internal/report"
 )
 
-func TestOperationalAndLegacySnapshotsPublishCommittedFacts(t *testing.T) {
-	for _, fixture := range []string{"run.json", "operational/run.json"} {
+func TestReportSnapshotsPublishCommittedFacts(t *testing.T) {
+	for _, fixture := range []string{"run.json", "operational/run.json", "advisor/run.json"} {
 		t.Run(fixture, func(t *testing.T) {
 			b, err := os.ReadFile("../report/testdata/" + fixture)
 			if err != nil {
@@ -48,6 +48,7 @@ func TestOperationalAndLegacySnapshotsPublishCommittedFacts(t *testing.T) {
 			run.Evidence = nil
 			run.Findings = nil
 			run.Sources = nil
+			run.AdvisorInstances = nil
 			if err := s.PublishReport(report.Markdown); err != nil {
 				t.Fatal(err)
 			}
