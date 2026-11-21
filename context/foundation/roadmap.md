@@ -3,7 +3,7 @@ project: "AI Agents for Devops"
 version: 1
 status: draft
 created: 2026-11-02
-updated: 2026-11-19
+updated: 2026-11-21
 prd_version: 1
 main_goal: quality
 top_blocker: none
@@ -36,7 +36,7 @@ The user confirmed no known blocker after stack selection and bootstrap. Confirm
 | S-01 | subscription-resource-health-report | Consultant can select one subscription with the existing work identity and receive a scoped Resource Health Markdown report or an explicit access failure. | — | US-01, FR-001, FR-002, FR-003, FR-004 | done |
 | S-02 | active-alert-report | Consultant can see relevant Service Health events and existing Azure Monitor metric/log alerts in the subscription report. | S-01 | US-01, FR-002, FR-003, FR-004 | done |
 | S-03 | advisor-recommendation-report | Consultant can review existing Azure Advisor recommendations and supporting evidence in the subscription report. | S-01 | US-01, FR-002, FR-003, FR-004 | done |
-| S-04 | complete-health-report | Consultant can run one check and review a consolidated Markdown report of active alerts, existing recommendations, evidence-backed OK resources, and explicit coverage gaps. | S-02, S-03 | US-01, FR-002, FR-003, FR-004 | proposed |
+| S-04 | complete-health-report | Consultant can run one check and review a consolidated Markdown report of active alerts, existing recommendations, evidence-backed OK resources, and explicit coverage gaps. | S-02, S-03 | US-01, FR-002, FR-003, FR-004 | done |
 | S-05 | selected-finding-drafts | Consultant can select findings from the reviewed report and generate ticket or recommendation drafts for manual submission. | S-04 | US-01, FR-004, FR-005 | proposed |
 
 The report slices incrementally advance FR-002–FR-004; their repeated references do not mean each early report satisfies the complete four-source requirement. FR-001 is delivered through S-01, the complete report requirements through S-04, and selected drafting through S-05.
@@ -116,7 +116,7 @@ Add source-provided suggestions as the agreed proactive-check behavior, with ref
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** An apparently complete report could omit applicable evidence and falsely label resources OK; validate coverage before making that classification.
-- **Status:** proposed
+- **Status:** done
 
 Combine all four sources in one run and apply the PRD's complete-applicable-coverage rule to each resource. State the limited meaning of OK; missing or failed evidence never establishes it. Retain useful findings in incomplete runs and clearly distinguish them from successful complete runs. Validate report contents against source evidence for a representative subscription with hundreds of resources and usually fewer than ten active alerts, including adverse coverage cases. This completes the report capability before selected drafting begins.
 
@@ -170,3 +170,5 @@ The PRD contains no open product questions.
 - **S-02: Consultant can see relevant Service Health events and existing Azure Monitor metric/log alerts in the subscription report.** — Archived 2026-11-18 → `context/archive/2026-11-06-active-alert-report/`. Lesson: —.
 
 - **S-03: Consultant can review existing Azure Advisor recommendations and supporting evidence in the subscription report.** — Archived 2026-11-19 → `context/archive/2026-11-18-advisor-recommendation-report/`. Lesson: —.
+
+- **S-04: Consultant can run one check and review a consolidated Markdown report of active alerts, existing recommendations, evidence-backed OK resources, and explicit coverage gaps.** — Archived 2026-11-21 → `context/archive/2026-11-19-complete-health-report/`. Lesson: —.

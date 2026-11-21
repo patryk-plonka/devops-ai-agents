@@ -1,9 +1,10 @@
 ---
 change_id: complete-health-report
 title: Trust the complete four-source current-state report
-status: impl_reviewed
+status: archived
 created: 2026-11-19
 updated: 2026-11-21
+archived_at: 2026-11-21T16:03:38Z
 ---
 
 ## Notes
