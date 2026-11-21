@@ -142,7 +142,7 @@ func continuation(link, subscription, route, queryStartTime string) (string, err
 	return u.String(), nil
 }
 
-func pages[T any](ctx context.Context, c Collection, subscription, route, initialURL string, pager *runtime.Pager[T], accept func(T) (*string, error)) error {
+func pages[T any](ctx context.Context, c Collection, subscription, route, initialURL string, pager *runtime.Pager[T], accept func(T, []health.RejectedRecordInput) (*string, error)) error {
 	limit := c.pageLimit
 	if limit == 0 {
 		limit = maxPages
@@ -164,7 +164,8 @@ func pages[T any](ctx context.Context, c Collection, subscription, route, initia
 			cancel()
 			return collectionFailure(err)
 		}
-		page, err := pager.NextPage(bounded)
+		var rejected []health.RejectedRecordInput
+		page, err := pager.NextPage(context.WithValue(bounded, pageRejectionsKey{}, &rejected))
 		// A successful decode can finish after the page deadline.
 		if contextErr := bounded.Err(); contextErr != nil {
 			err = contextErr
@@ -173,7 +174,7 @@ func pages[T any](ctx context.Context, c Collection, subscription, route, initia
 		if err != nil {
 			return collectionFailure(err)
 		}
-		next, err := accept(page) // normalization and checkpoint precede next request
+		next, err := accept(page, rejected) // normalization and checkpoint precede next request
 		if err != nil {
 			return err
 		}

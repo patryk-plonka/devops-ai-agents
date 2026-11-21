@@ -294,6 +294,7 @@ func TestAdvisorRebuildOrdersVersionsByStateChange(t *testing.T) {
 	conflictingTarget := refreshed
 	conflictingTarget.TargetResourceID = ""
 	initial := scopedRun()
+	initial.SchemaVersion = 3
 	initial.NormalizePage("advisor", advisorPage(first))
 	stableFindingID := initial.Findings[0].ID
 
@@ -316,6 +317,7 @@ func TestAdvisorRebuildOrdersVersionsByStateChange(t *testing.T) {
 			b.CollectedAt = a.CollectedAt.Add(time.Hour)
 			r, reversed := scopedRun(), scopedRun()
 			for i, run := range []*Run{&r, &reversed} {
+				run.SchemaVersion = 3
 				pages := []Page{a, b}
 				if i == 1 {
 					slices.Reverse(pages)

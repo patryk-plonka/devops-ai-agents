@@ -276,8 +276,20 @@ func TestProcessInterruptPreservesCheckpoint(t *testing.T) {
 				}
 				saved := read()
 				if !reflect.DeepEqual(saved.Evidence, checkpoint.Evidence) ||
-					!reflect.DeepEqual(saved.AdvisorInstances, checkpoint.AdvisorInstances) || saved.ID != checkpoint.ID {
+					!reflect.DeepEqual(saved.AdvisorInstances, checkpoint.AdvisorInstances) ||
+					!reflect.DeepEqual(saved.Findings, checkpoint.Findings) || saved.ID != checkpoint.ID {
 					t.Fatal("checkpoint evidence lost")
+				}
+				wantCounts := health.AssessmentSummary{Unknown: 1}
+				if saved.SchemaVersion != 4 || saved.Coverage != "incomplete" || saved.AssessmentSummary == nil ||
+					*saved.AssessmentSummary != wantCounts || len(saved.ResourceAssessments) != 1 || saved.ResourceAssessments[0].Disposition != "unknown" {
+					t.Fatalf("interrupted snapshot classification: %s %+v", saved.Coverage, saved.AssessmentSummary)
+				}
+				reportFile := filepath.Join(filepath.Dir(paths[0]), "report.md")
+				if mode == "second interrupt" || mode == "failed final write" {
+					if _, err := os.Stat(reportFile); !errors.Is(err, os.ErrNotExist) {
+						t.Fatalf("unexpected report after interrupted finalization: %v", err)
+					}
 				}
 				savedBytes, err := os.ReadFile(paths[0])
 				if err != nil {
@@ -314,7 +326,7 @@ func TestProcessInterruptPreservesCheckpoint(t *testing.T) {
 					return
 				}
 				reportPath := strings.TrimSpace(stdout.String())
-				if reportPath != filepath.Join(filepath.Dir(paths[0]), "report.md") {
+				if reportPath != reportFile {
 					t.Fatal("stdout did not identify the report beside the saved checkpoint")
 				}
 				b, err := os.ReadFile(reportPath)
@@ -331,6 +343,8 @@ func TestProcessInterruptPreservesCheckpoint(t *testing.T) {
 					}
 				}
 				if saved.Outcome != "cancelled" || saved.EndedAt == nil || saved.Sources[source].Reason != "interrupted" ||
+					!strings.Contains(text, "**Incomplete coverage · 0 resources OK, 0 with findings, 1 unknown.**") ||
+					!strings.Contains(diagnostics, "Execution: cancelled, overall coverage: incomplete. 0 resources OK, 0 with findings, 1 unknown.") ||
 					!strings.Contains(text, "Run ID: "+saved.ID) ||
 					!strings.Contains(text, fmt.Sprintf("\nRevision: %d\n", saved.Revision)) ||
 					!strings.Contains(text, "Execution outcome: **cancelled**") {

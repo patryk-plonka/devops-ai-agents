@@ -78,11 +78,11 @@ func (c Collection) AzureMonitor(ctx context.Context, subscription string, emit 
 		},
 		Tracer: client.Tracer(),
 	})
-	return pages(ctx, c, subscription, monitorRoute, initial, pager, func(response monitorPage) (*string, error) {
+	return pages(ctx, c, subscription, monitorRoute, initial, pager, func(response monitorPage, rejected []health.RejectedRecordInput) (*string, error) {
 		if response.Value == nil {
 			return nil, fail("invalid_response", "Azure Monitor response has no alert list.", 1)
 		}
-		page := health.Page{CollectedAt: time.Now().UTC()}
+		page := health.Page{CollectedAt: time.Now().UTC(), RejectedScopes: rejected}
 		for _, alert := range response.Value {
 			input := health.MonitorInput{}
 			if alert != nil {

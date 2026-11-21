@@ -64,12 +64,20 @@ func writeOperationalSections(b *strings.Builder, r health.Run) {
 				if first == nil || t.Before(*first) {
 					first = &t
 				}
-				if last == nil || t.After(*last) {
-					last = &t
+				latest := t
+				if r.SchemaVersion >= health.AssessmentSchemaVersion {
+					latest = e.LatestCollectionTime()
+				}
+				if last == nil || latest.After(*last) {
+					last = &latest
 				}
 			}
 		}
-		fmt.Fprintf(b, "Evidence collected (UTC): %s to %s. Pages are collected sequentially; this is not an atomic snapshot. Empty completed lists do not establish OK.\n\n", stamp(first), stamp(last))
+		if r.SchemaVersion >= health.AssessmentSchemaVersion {
+			fmt.Fprintf(b, "Evidence collected (UTC): %s to %s. See accepted-page times under Query provenance for lists with no retained rows.\n\n", stamp(first), stamp(last))
+		} else {
+			fmt.Fprintf(b, "Evidence collected (UTC): %s to %s. Pages are collected sequentially; this is not an atomic snapshot. Empty completed lists do not establish OK.\n\n", stamp(first), stamp(last))
+		}
 		if source == "service_health" {
 			b.WriteString("ServiceIssue identifies an incident notice; PlannedMaintenance, HealthAdvisory and SecurityAdvisory retain their distinct categories. Future notices do not establish an ongoing outage. The listing does not enumerate affected resources. Service/region attribution and uncertainty appear in the evidence index. Sensitive details are not retrieved; available metadata and detail limitations remain visible.\n\n")
 		} else {
@@ -90,6 +98,9 @@ func writeOperationalSections(b *strings.Builder, r health.Run) {
 			b.WriteString("No active summaries supported by the collected evidence. Consult saved observations and coverage gaps.\n\n")
 		}
 		for _, f := range findings {
+			if r.SchemaVersion >= health.AssessmentSchemaVersion && source == "service_health" {
+				fmt.Fprintf(b, "<a id=\"%s\"></a>\n\n", incidentAnchor(f.ID))
+			}
 			fmt.Fprintf(b, "- %s\n  - Source entity: %s; selected subscription: %s.\n  - Finding ID: %s; evidence: %s.\n", literal(f.Title), literal(f.EntityID), literal(f.SubscriptionID), literal(f.ID), refs(f.EvidenceIDs))
 			ids := slices.Clone(f.EvidenceIDs)
 			sort.Strings(ids)

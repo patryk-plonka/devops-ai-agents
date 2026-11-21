@@ -29,7 +29,14 @@ func assertPublished(t *testing.T, root, path string) health.Run {
 		t.Fatal(err)
 	}
 	text := html.UnescapeString(string(b))
-	for _, want := range []string{"Run ID: " + r.ID, fmt.Sprintf("\nRevision: %d\n", r.Revision), "Execution outcome: **" + r.Outcome + "**", "INCOMPLETE coverage"} {
+	coverage := "Incomplete coverage"
+	if r.Coverage == "complete" {
+		coverage = "Complete coverage"
+	}
+	if r.SchemaVersion != 4 || r.AssessmentSummary == nil {
+		t.Fatal("schema-4 assessment summary missing")
+	}
+	for _, want := range []string{"Run ID: " + r.ID, fmt.Sprintf("\nRevision: %d\n", r.Revision), "Execution outcome: **" + r.Outcome + "**", coverage + " · " + r.AssessmentSummary.ResourceCounts()} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("report/snapshot disagree: %q", want)
 		}
@@ -68,6 +75,54 @@ func TestPublishedReportMatchesCommittedSnapshot(t *testing.T) {
 	}
 }
 
+func configureEligibleResource(a *App) {
+	page := func(p health.Page) health.Collector {
+		return func(_ context.Context, _ string, emit func(health.Page) error) error { return emit(p) }
+	}
+	empty := page(health.Page{})
+	a.Inventory = page(health.Page{Resources: []health.ResourceInput{{ID: cliVM}}})
+	a.ResourceHealth = page(health.Page{Health: []health.HealthInput{{
+		StatusID:          cliVM + "/providers/Microsoft.ResourceHealth/availabilityStatuses/current",
+		PropertiesPresent: true, State: stringPointer("Available"),
+	}}})
+	a.ServiceHealth, a.AzureMonitor, a.Advisor = empty, empty, empty
+}
+
+func TestCLICompleteAndMissingCheckSummaries(t *testing.T) {
+	for _, tc := range []struct {
+		name, coverage, headline string
+		ok, unknown              int
+	}{
+		{"complete", "complete", "Complete coverage · 1 resource OK, 0 with findings, 0 unknown", 1, 0},
+		{"missing health", "incomplete", "Incomplete coverage · 0 resources OK, 0 with findings, 1 unknown", 0, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, out, diag, _ := testApp(t)
+			configureEligibleResource(&a)
+			if tc.unknown > 0 {
+				a.ResourceHealth = a.ServiceHealth
+			}
+			if code := a.Run(context.Background(), []string{"health", "check", "--subscription", first}); code != 0 {
+				t.Fatalf("exit %d: %s", code, diag)
+			}
+			path := strings.TrimSpace(out.String())
+			r := assertPublished(t, a.Directory, path)
+			if counts := *r.AssessmentSummary; r.Coverage != tc.coverage || counts != (health.AssessmentSummary{OK: tc.ok, Unknown: tc.unknown}) {
+				t.Fatalf("wrong committed counts %+v", counts)
+			}
+			b, err := os.ReadFile(path)
+			if err != nil || !strings.Contains(string(b), "**"+tc.headline+".**") {
+				t.Fatal("unexpected report headline")
+			}
+			if strings.Count(out.String(), "\n") != 1 ||
+				!strings.Contains(diag.String(), "Execution: completed, overall coverage: "+tc.coverage+". "+r.AssessmentSummary.ResourceCounts()+". Report saved: "+path) ||
+				!strings.Contains(diag.String(), fmt.Sprintf("Evidence snapshot: %s (revision %d).", filepath.Join(filepath.Dir(path), "run.json"), r.Revision)) {
+				t.Fatalf("terminal output differs from the published pair: %s", diag)
+			}
+		})
+	}
+}
+
 type publicationStore struct {
 	Storage
 	finalWriteFailure bool
@@ -79,13 +134,14 @@ func (s publicationStore) Save(r *health.Run) error {
 	}
 	return s.Storage.Save(r)
 }
-func (s publicationStore) PublishReport(render func(health.Run) ([]byte, error)) error {
+func (s publicationStore) PublishReport(ctx context.Context, render func(health.Run) ([]byte, error)) error {
 	return errors.New("secret-canary")
 }
 func TestFinalizationFailuresExposeRetainedArtifacts(t *testing.T) {
 	for _, kind := range []string{"final JSON write", "render", "publication", "publication with older report", "final JSON with older report"} {
 		t.Run(kind, func(t *testing.T) {
 			a, out, diag, _ := testApp(t)
+			configureEligibleResource(&a)
 			older := strings.Contains(kind, "older")
 			a.NewStore = func(root string, r *health.Run) (Storage, error) {
 				s, err := runstore.New(root, r)
@@ -96,10 +152,11 @@ func TestFinalizationFailuresExposeRetainedArtifacts(t *testing.T) {
 					now := r.UpdatedAt
 					r.EndedAt = &now
 					r.Outcome = "failed"
+					r.RebuildCoverage()
 					if err := s.Save(r); err != nil {
 						t.Fatal(err)
 					}
-					if err := s.PublishReport(report.Markdown); err != nil {
+					if err := s.PublishReport(context.Background(), report.Markdown); err != nil {
 						t.Fatal(err)
 					}
 					r.EndedAt = nil
@@ -114,7 +171,12 @@ func TestFinalizationFailuresExposeRetainedArtifacts(t *testing.T) {
 				return s, nil
 			}
 			if kind == "render" {
-				a.Render = func(health.Run) ([]byte, error) { return nil, errors.New("secret-canary") }
+				a.Render = func(saved health.Run) ([]byte, error) {
+					if saved.Coverage != "complete" || saved.AssessmentSummary.OK != 1 {
+						t.Fatal("test requires an eligible resource before publication fails")
+					}
+					return nil, errors.New("secret-canary")
+				}
 			}
 			code := a.Run(context.Background(), []string{"health", "check", "--subscription", first})
 			if code != 1 || out.Len() != 0 || strings.Contains(diag.String(), "secret-canary") || strings.Contains(diag.String(), "Report saved:") || !strings.Contains(diag.String(), "Last saved snapshot:") {
@@ -127,6 +189,9 @@ func TestFinalizationFailuresExposeRetainedArtifacts(t *testing.T) {
 				t.Fatal("report absence not disclosed")
 			}
 			r := snapshot(t, a.Directory)
+			if r.Coverage != "incomplete" || *r.AssessmentSummary != (health.AssessmentSummary{Unknown: 1}) || r.ResourceAssessments[0].Disposition != "unknown" {
+				t.Fatal("retained checkpoint or diagnostic contains an affirmative classification")
+			}
 			if strings.HasPrefix(kind, "final JSON") && r.EndedAt != nil {
 				t.Fatal("failed final write replaced checkpoint")
 			}
@@ -248,12 +313,18 @@ func TestInterruptedFinalWriteFailureRetainsCheckpoint(t *testing.T) {
 
 func TestInterruptDuringRenderingFinalizesCancelledRevision(t *testing.T) {
 	a, out, diag, _ := testApp(t)
+	configureEligibleResource(&a)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	var firstRevision int
 	renders := 0
 	a.Render = func(r health.Run) ([]byte, error) {
 		renders++
 		if renders == 1 {
+			firstRevision = r.Revision
+			if r.Coverage != "complete" || r.AssessmentSummary.OK != 1 {
+				t.Fatal("test requires an eligible assessment before rendering is interrupted")
+			}
 			cancel()
 		}
 		return report.Markdown(r)
@@ -262,7 +333,8 @@ func TestInterruptDuringRenderingFinalizesCancelledRevision(t *testing.T) {
 		t.Fatalf("code %d: %s", code, diag)
 	}
 	r := assertPublished(t, a.Directory, strings.TrimSpace(out.String()))
-	if r.Outcome != "cancelled" || renders != 2 {
+	if r.Outcome != "cancelled" || renders != 2 || r.Revision != firstRevision+1 ||
+		r.Coverage != "incomplete" || *r.AssessmentSummary != (health.AssessmentSummary{Unknown: 1}) {
 		t.Fatal("late interruption produced completed output")
 	}
 }
@@ -309,11 +381,11 @@ func (s *interruptFinalizationStore) Save(r *health.Run) error {
 	return s.Storage.Save(r)
 }
 
-func (s *interruptFinalizationStore) PublishReport(render func(health.Run) ([]byte, error)) error {
+func (s *interruptFinalizationStore) PublishReport(ctx context.Context, render func(health.Run) ([]byte, error)) error {
 	if s.diagnosticWrite {
 		return errors.New("publication-secret-canary")
 	}
-	return s.Storage.PublishReport(render)
+	return s.Storage.PublishReport(ctx, render)
 }
 
 func TestInterruptionDuringFinalizationWritesPreservesExit130(t *testing.T) {
@@ -355,6 +427,9 @@ func TestInterruptionDuringFinalizationWritesPreservesExit130(t *testing.T) {
 			if len(r.Evidence) != 1 {
 				t.Fatal("committed evidence lost")
 			}
+			if !tc.fail && (r.Outcome != "cancelled" || r.Coverage != "incomplete" || *r.AssessmentSummary != (health.AssessmentSummary{Unknown: 1})) {
+				t.Fatal("interrupted diagnostic retained affirmative coverage")
+			}
 			if tc.fail {
 				after, err := os.ReadFile(storage.Path())
 				if err != nil || string(after) != string(storage.before) {
@@ -389,11 +464,10 @@ func TestReportPathDeliveryPreservesPublishedArtifacts(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a, _, diag, _ := testApp(t)
+			configureEligibleResource(&a)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			a.Inventory = func(_ context.Context, _ string, emit func(health.Page) error) error {
-				return emit(health.Page{Resources: []health.ResourceInput{{ID: cliVM}}})
-			}
+			collectHealth := a.ResourceHealth
 			a.ResourceHealth = func(ctx context.Context, _ string, emit func(health.Page) error) error {
 				if tc.cancelBefore {
 					cancel()
@@ -402,7 +476,7 @@ func TestReportPathDeliveryPreservesPublishedArtifacts(t *testing.T) {
 				if tc.partial {
 					return errors.New("collector-secret-canary")
 				}
-				return emit(health.Page{Health: []health.HealthInput{{StatusID: cliVM + "/providers/Microsoft.ResourceHealth/availabilityStatuses/current", PropertiesPresent: true, State: stringPointer("Unavailable")}}})
+				return collectHealth(ctx, first, emit)
 			}
 			var reportPath, snapshotPath string
 			var beforeReport, beforeSnapshot []byte
@@ -414,6 +488,9 @@ func TestReportPathDeliveryPreservesPublishedArtifacts(t *testing.T) {
 				r := assertPublished(t, a.Directory, reportPath)
 				if r.Outcome != tc.outcome || len(r.Evidence) == 0 {
 					t.Fatal("wrong snapshot before delivery")
+				}
+				if tc.outcome == "completed" && (r.Coverage != "complete" || r.AssessmentSummary.OK != 1) {
+					t.Fatal("eligible assessment was not committed before delivery")
 				}
 				var err error
 				beforeReport, err = os.ReadFile(reportPath)

@@ -134,7 +134,6 @@ func TestAdvisorEmptyEnumeration(t *testing.T) {
 	for _, tc := range []struct{ name, body string }{
 		{"literal fixture", advisorFixture(t, "empty")},
 		{"null continuation", `{"value":[],"nextLink":null}`},
-		{"envelope field case", `{"value":[],"nextLink":"","Value":null,"NextLink":{"bad":"envelope-canary"}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			run, store := newAdvisorCheckpoint(t)
@@ -160,6 +159,8 @@ func TestAdvisorDuplicateEnvelopeFieldsFailWithoutCheckpoint(t *testing.T) {
 		{"malformed continuation first", `{"value":[],"nextLink":{"url":"envelope-canary"},"nextLink":null}`},
 		{"both lists well typed", `{"value":[{}],"value":[]}`},
 		{"escaped duplicate key", `{"value":[],"nextLink":null,"next\u004cink":""}`},
+		{"case aliases", `{"value":[],"nextLink":"","Value":null,"NextLink":{"bad":"envelope-canary"}}`},
+		{"case alias without canonical link", `{"value":[],"NextLink":"envelope-canary"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			run, store := newAdvisorCheckpoint(t)
@@ -228,7 +229,7 @@ func TestAdvisorLateDecodedPageKeepsCommittedEvidence(t *testing.T) {
 				return decodedPage{id: lateID}, nil
 			},
 		})
-		return pages(ctx, Collection{timeout: 500 * time.Millisecond}, subscription, advisorRoute, advisorInitialRequest, pager, func(page decodedPage) (*string, error) {
+		return pages(ctx, Collection{timeout: 500 * time.Millisecond}, subscription, advisorRoute, advisorInitialRequest, pager, func(page decodedPage, _ []health.RejectedRecordInput) (*string, error) {
 			return page.next, emit(health.Page{Advisor: []health.AdvisorInput{{ID: page.id, Status: "New"}}})
 		})
 	}

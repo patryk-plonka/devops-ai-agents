@@ -1,0 +1,504 @@
+{
+  "schema_version": 4,
+  "run_id": "synthetic-assessment-run",
+  "revision": 17,
+  "tool_version": "test",
+  "started_at": "2026-11-20T08:00:00Z",
+  "updated_at": "2026-11-20T08:12:00Z",
+  "ended_at": "2026-11-20T08:12:00Z",
+  "outcome": "completed",
+  "coverage": "incomplete",
+  "requested_scope": "Synthetic subscription",
+  "scope": {
+    "subscription_id": "11111111-1111-1111-1111-111111111111",
+    "name": "Synthetic subscription",
+    "tenant_id": "",
+    "cloud": "AzureCloud"
+  },
+  "sources": {
+    "advisor": {
+      "status": "completed",
+      "pages": 1,
+      "rejected_records": 0,
+      "query": {
+        "reference_at": "2026-11-20T08:00:00Z",
+        "operation": "Recommendations.List",
+        "api_version": "2026-10-01",
+        "subscription_id": "11111111-1111-1111-1111-111111111111",
+        "requested_at": "2026-11-20T08:08:59Z"
+      },
+      "first_page_at": "2026-11-20T08:09:00Z",
+      "last_page_at": "2026-11-20T08:09:00Z",
+      "enumeration_complete": true
+    },
+    "azure_monitor": {
+      "status": "completed",
+      "pages": 1,
+      "rejected_records": 0,
+      "query": {
+        "reference_at": "2026-11-20T08:00:00Z",
+        "time_range": "30d",
+        "operation": "Alerts.GetAll",
+        "api_version": "2019-03-01",
+        "subscription_id": "11111111-1111-1111-1111-111111111111",
+        "monitor_condition": "Fired",
+        "requested_at": "2026-11-20T08:06:59Z"
+      },
+      "first_page_at": "2026-11-20T08:07:00Z",
+      "last_page_at": "2026-11-20T08:07:00Z",
+      "enumeration_complete": true
+    },
+    "inventory": {
+      "status": "completed",
+      "pages": 1,
+      "rejected_records": 0,
+      "query": {
+        "reference_at": "2026-11-20T08:00:00Z",
+        "operation": "Resources.List",
+        "api_version": "2025-04-01",
+        "subscription_id": "11111111-1111-1111-1111-111111111111",
+        "requested_at": "2026-11-20T08:00:59Z"
+      },
+      "first_page_at": "2026-11-20T08:01:00Z",
+      "last_page_at": "2026-11-20T08:01:00Z",
+      "enumeration_complete": true
+    },
+    "resource_health": {
+      "status": "completed",
+      "pages": 2,
+      "rejected_records": 0,
+      "query": {
+        "reference_at": "2026-11-20T08:00:00Z",
+        "operation": "AvailabilityStatuses.ListBySubscriptionId",
+        "api_version": "2025-05-01",
+        "subscription_id": "11111111-1111-1111-1111-111111111111",
+        "requested_at": "2026-11-20T08:02:59Z"
+      },
+      "first_page_at": "2026-11-20T08:03:00Z",
+      "last_page_at": "2026-11-20T08:04:00Z",
+      "enumeration_complete": true
+    },
+    "service_health": {
+      "status": "completed",
+      "pages": 1,
+      "rejected_records": 0,
+      "query": {
+        "reference_at": "2026-11-20T08:00:00Z",
+        "cutoff": "2026-10-21T08:00:00Z",
+        "query_start_time": "10/21/2026",
+        "operation": "Events.ListBySubscriptionId",
+        "api_version": "2025-05-01",
+        "subscription_id": "11111111-1111-1111-1111-111111111111",
+        "requested_at": "2026-11-20T08:04:59Z"
+      },
+      "first_page_at": "2026-11-20T08:05:00Z",
+      "last_page_at": "2026-11-20T08:05:00Z",
+      "enumeration_complete": true
+    }
+  },
+  "diagnostics": [],
+  "redactions": 0,
+  "resources": [
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.compute/virtualmachines/eligible",
+      "name": "vm | [link](https://bad.example) \u003cscript\u003e",
+      "type": "",
+      "resource_group": "g",
+      "tags": {},
+      "evidence_ids": [
+        "ev-4f4f52d2552cf3942b5a37562548ad2dfffb4ca4dc1bf5375dc54e1c159de317"
+      ]
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.compute/virtualmachines/finding",
+      "name": "finding",
+      "type": "",
+      "resource_group": "g",
+      "tags": {},
+      "evidence_ids": [
+        "ev-2ef62cb8e78c888c0bfd83d31ee52ccec34c51b0e2d813353e930d88cf6b3b7d"
+      ]
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.compute/virtualmachines/potential-gap",
+      "name": "potential-gap",
+      "type": "",
+      "resource_group": "g",
+      "tags": {},
+      "evidence_ids": [
+        "ev-f3ecc329d503e7b8e0a002f7624bc4d11e705e9dae2f1b291a3f024111f8569b"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev-4f4f52d2552cf3942b5a37562548ad2dfffb4ca4dc1bf5375dc54e1c159de317",
+      "source": "inventory",
+      "operation": "Resources.List",
+      "api_version": "2025-04-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/eligible",
+      "kind": "inventory",
+      "collected_at": "2026-11-20T08:01:00Z",
+      "resource": {
+        "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/eligible",
+        "name": "vm | [link](https://bad.example) \u003cscript\u003e",
+        "type": "",
+        "resource_group": "g",
+        "tags": {}
+      }
+    },
+    {
+      "id": "ev-2ef62cb8e78c888c0bfd83d31ee52ccec34c51b0e2d813353e930d88cf6b3b7d",
+      "source": "inventory",
+      "operation": "Resources.List",
+      "api_version": "2025-04-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/finding",
+      "kind": "inventory",
+      "collected_at": "2026-11-20T08:01:00Z",
+      "resource": {
+        "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/finding",
+        "name": "finding",
+        "type": "",
+        "resource_group": "g",
+        "tags": {}
+      }
+    },
+    {
+      "id": "ev-f3ecc329d503e7b8e0a002f7624bc4d11e705e9dae2f1b291a3f024111f8569b",
+      "source": "inventory",
+      "operation": "Resources.List",
+      "api_version": "2025-04-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/potential-gap",
+      "kind": "inventory",
+      "collected_at": "2026-11-20T08:01:00Z",
+      "resource": {
+        "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/potential-gap",
+        "name": "potential-gap",
+        "type": "",
+        "resource_group": "g",
+        "tags": {}
+      }
+    },
+    {
+      "id": "ev-b3462e15cc388416a9439b93b21afe92f41373c8b84c011952a1fe19ddb39ef7",
+      "source": "resource_health",
+      "operation": "AvailabilityStatuses.ListBySubscriptionId",
+      "api_version": "2025-05-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/eligible",
+      "status_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/eligible/providers/Microsoft.ResourceHealth/availabilityStatuses/current",
+      "status_role": "current",
+      "kind": "availability",
+      "state": "Degraded",
+      "collected_at": "2026-11-20T08:03:00Z",
+      "source_reported_at": "2026-11-20T06:00:00Z"
+    },
+    {
+      "id": "ev-e2b78157e3d3fbed60cd962ab940ded169cab4f94f19155503c251532e599f0c",
+      "source": "resource_health",
+      "operation": "AvailabilityStatuses.ListBySubscriptionId",
+      "api_version": "2025-05-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/eligible",
+      "status_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/eligible/providers/Microsoft.ResourceHealth/availabilityStatuses/current",
+      "status_role": "current",
+      "kind": "availability",
+      "state": "Available",
+      "collected_at": "2026-11-20T08:04:00Z",
+      "source_reported_at": "2026-11-20T07:00:00Z"
+    },
+    {
+      "id": "ev-62573ed376e0b599c3d5e5a7fee3427144d4ef70f95da8e6d15452c91aff6c32",
+      "source": "resource_health",
+      "operation": "AvailabilityStatuses.ListBySubscriptionId",
+      "api_version": "2025-05-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/finding",
+      "status_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/finding/providers/Microsoft.ResourceHealth/availabilityStatuses/current",
+      "status_role": "current",
+      "kind": "availability",
+      "state": "Available",
+      "collected_at": "2026-11-20T08:04:00Z",
+      "source_reported_at": "2026-11-20T07:00:00Z"
+    },
+    {
+      "id": "ev-c029c6baebf507d1b83da685113762a44873900df25ef69567a403d6e10d751b",
+      "source": "azure_monitor",
+      "operation": "Alerts.GetAll",
+      "api_version": "2019-03-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/finding",
+      "entity_id": "/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.AlertsManagement/alerts/finding",
+      "subscription_id": "11111111-1111-1111-1111-111111111111",
+      "monitor": {
+        "signal_type": "Metric",
+        "condition": "Fired",
+        "workflow_state": "Acknowledged",
+        "severity": "Sev2",
+        "attribution": "reported_target"
+      },
+      "disposition": "active",
+      "kind": "monitor_alert",
+      "state": "Fired",
+      "collected_at": "2026-11-20T08:07:00Z",
+      "source_reported_at": "2026-11-20T07:00:00Z"
+    },
+    {
+      "id": "ev-847a6361c11628f2385ce41a6a59925f7c7cbe21f8b4a9bd58f779afd024d238",
+      "source": "azure_monitor",
+      "operation": "Alerts.GetAll",
+      "api_version": "2019-03-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/potential-gap",
+      "entity_id": "/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.AlertsManagement/alerts/potential-gap",
+      "subscription_id": "11111111-1111-1111-1111-111111111111",
+      "monitor": {
+        "signal_type": "Metric",
+        "condition": "Fired",
+        "workflow_state": "Acknowledged",
+        "severity": "Sev2",
+        "attribution": "reported_target"
+      },
+      "disposition": "active",
+      "kind": "monitor_alert",
+      "state": "Fired",
+      "collected_at": "2026-11-20T08:07:00Z",
+      "source_reported_at": "2026-11-20T07:00:00Z"
+    },
+    {
+      "id": "ev-cfafeaaddbd6912a71e4db22c43a29d005c4290d6e4cfc2c912801657b6c6e48",
+      "source": "advisor",
+      "operation": "Recommendations.List",
+      "api_version": "2026-10-01",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/eligible",
+      "entity_id": "/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.Advisor/recommendations/postponed",
+      "subscription_id": "11111111-1111-1111-1111-111111111111",
+      "advisor": {
+        "type_id": "22222222-2222-2222-2222-222222222222",
+        "category": "Cost",
+        "impact": "Low",
+        "status": "Postponed",
+        "last_updated": "2026-11-20T07:00:00Z"
+      },
+      "kind": "advisor_recommendation",
+      "collected_at": "2026-11-20T08:09:00Z"
+    }
+  ],
+  "observations": [
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.compute/virtualmachines/eligible",
+      "state": "Available",
+      "in_inventory": true,
+      "evidence_ids": [
+        "ev-b3462e15cc388416a9439b93b21afe92f41373c8b84c011952a1fe19ddb39ef7",
+        "ev-e2b78157e3d3fbed60cd962ab940ded169cab4f94f19155503c251532e599f0c"
+      ]
+    },
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.compute/virtualmachines/finding",
+      "state": "Available",
+      "in_inventory": true,
+      "evidence_ids": [
+        "ev-62573ed376e0b599c3d5e5a7fee3427144d4ef70f95da8e6d15452c91aff6c32"
+      ]
+    },
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.compute/virtualmachines/potential-gap",
+      "state": "not_checked",
+      "in_inventory": true,
+      "evidence_ids": []
+    }
+  ],
+  "findings": [
+    {
+      "id": "finding-14b900683c6a721690f7dac5a1b0f00ae892efbd5735728d2fef3350513dcbec",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/finding",
+      "source": "azure_monitor",
+      "entity_id": "/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.AlertsManagement/alerts/finding",
+      "subscription_id": "11111111-1111-1111-1111-111111111111",
+      "category": "monitor_alert",
+      "title": "Azure Monitor source condition Fired",
+      "evidence_ids": [
+        "ev-c029c6baebf507d1b83da685113762a44873900df25ef69567a403d6e10d751b"
+      ]
+    },
+    {
+      "id": "finding-1cf8d96e0272707245799b339e017a18e32a61e573455e27f624941a6a68ed5c",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/potential-gap",
+      "source": "azure_monitor",
+      "entity_id": "/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.AlertsManagement/alerts/potential-gap",
+      "subscription_id": "11111111-1111-1111-1111-111111111111",
+      "category": "monitor_alert",
+      "title": "Azure Monitor source condition Fired",
+      "evidence_ids": [
+        "ev-847a6361c11628f2385ce41a6a59925f7c7cbe21f8b4a9bd58f779afd024d238"
+      ]
+    },
+    {
+      "id": "finding-75813f86395f098158d9c490f1d93e028b7a73f07594fdc4d059b79ed56ab359",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/g/providers/Microsoft.Compute/virtualMachines/eligible",
+      "category": "resource_health_issue",
+      "title": "Resource Health reported Degraded",
+      "evidence_ids": [
+        "ev-b3462e15cc388416a9439b93b21afe92f41373c8b84c011952a1fe19ddb39ef7"
+      ]
+    }
+  ],
+  "advisor_instances": [
+    {
+      "entity_id": "/subscriptions/11111111-1111-1111-1111-111111111111/providers/microsoft.advisor/recommendations/postponed",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.compute/virtualmachines/eligible",
+      "evidence_ids": [
+        "ev-cfafeaaddbd6912a71e4db22c43a29d005c4290d6e4cfc2c912801657b6c6e48"
+      ],
+      "type_id": "22222222-2222-2222-2222-222222222222",
+      "category": "Cost",
+      "impact": "Low",
+      "status": "Postponed",
+      "last_updated": "2026-11-20T07:00:00Z"
+    }
+  ],
+  "coverage_gaps": [
+    {
+      "source": "azure_monitor",
+      "reason": "monitor_30_day_retention_and_stateless_limits"
+    },
+    {
+      "source": "azure_monitor",
+      "reason": "non_atomic_source_snapshot"
+    },
+    {
+      "source": "resource_health",
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.compute/virtualmachines/potential-gap",
+      "reason": "missing_health_evidence",
+      "evidence_ids": [
+        "ev-f3ecc329d503e7b8e0a002f7624bc4d11e705e9dae2f1b291a3f024111f8569b"
+      ],
+      "blocking": true
+    },
+    {
+      "source": "service_health",
+      "reason": "non_atomic_source_snapshot"
+    },
+    {
+      "source": "service_health",
+      "reason": "resource_impact_not_enumerated"
+    },
+    {
+      "source": "service_health",
+      "reason": "service_health_30_day_update_window"
+    }
+  ],
+  "resource_assessments": [
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.compute/virtualmachines/eligible",
+      "disposition": "ok",
+      "checks": [
+        {
+          "source_ref": "sources.inventory",
+          "evidence_ids": [
+            "ev-4f4f52d2552cf3942b5a37562548ad2dfffb4ca4dc1bf5375dc54e1c159de317"
+          ]
+        },
+        {
+          "source_ref": "sources.resource_health",
+          "evidence_ids": [
+            "ev-e2b78157e3d3fbed60cd962ab940ded169cab4f94f19155503c251532e599f0c"
+          ]
+        },
+        {
+          "source_ref": "sources.service_health"
+        },
+        {
+          "source_ref": "sources.azure_monitor"
+        },
+        {
+          "source_ref": "sources.advisor",
+          "evidence_ids": [
+            "ev-cfafeaaddbd6912a71e4db22c43a29d005c4290d6e4cfc2c912801657b6c6e48"
+          ]
+        }
+      ],
+      "historical_finding_ids": [
+        "finding-75813f86395f098158d9c490f1d93e028b7a73f07594fdc4d059b79ed56ab359"
+      ],
+      "postponed_evidence_ids": [
+        "ev-cfafeaaddbd6912a71e4db22c43a29d005c4290d6e4cfc2c912801657b6c6e48"
+      ]
+    },
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.compute/virtualmachines/finding",
+      "disposition": "finding",
+      "checks": [
+        {
+          "source_ref": "sources.inventory",
+          "evidence_ids": [
+            "ev-2ef62cb8e78c888c0bfd83d31ee52ccec34c51b0e2d813353e930d88cf6b3b7d"
+          ]
+        },
+        {
+          "source_ref": "sources.resource_health",
+          "evidence_ids": [
+            "ev-62573ed376e0b599c3d5e5a7fee3427144d4ef70f95da8e6d15452c91aff6c32"
+          ]
+        },
+        {
+          "source_ref": "sources.service_health"
+        },
+        {
+          "source_ref": "sources.azure_monitor",
+          "evidence_ids": [
+            "ev-c029c6baebf507d1b83da685113762a44873900df25ef69567a403d6e10d751b"
+          ]
+        },
+        {
+          "source_ref": "sources.advisor"
+        }
+      ],
+      "finding_ids": [
+        "finding-14b900683c6a721690f7dac5a1b0f00ae892efbd5735728d2fef3350513dcbec"
+      ]
+    },
+    {
+      "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.compute/virtualmachines/potential-gap",
+      "disposition": "unknown",
+      "checks": [
+        {
+          "source_ref": "sources.inventory",
+          "evidence_ids": [
+            "ev-f3ecc329d503e7b8e0a002f7624bc4d11e705e9dae2f1b291a3f024111f8569b"
+          ]
+        },
+        {
+          "source_ref": "sources.resource_health"
+        },
+        {
+          "source_ref": "sources.service_health"
+        },
+        {
+          "source_ref": "sources.azure_monitor",
+          "evidence_ids": [
+            "ev-847a6361c11628f2385ce41a6a59925f7c7cbe21f8b4a9bd58f779afd024d238"
+          ]
+        },
+        {
+          "source_ref": "sources.advisor"
+        }
+      ],
+      "blocking_reasons": [
+        {
+          "source": "resource_health",
+          "resource_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/g/providers/microsoft.compute/virtualmachines/potential-gap",
+          "reason": "missing_health_evidence",
+          "evidence_ids": [
+            "ev-f3ecc329d503e7b8e0a002f7624bc4d11e705e9dae2f1b291a3f024111f8569b"
+          ],
+          "blocking": true
+        }
+      ],
+      "finding_ids": [
+        "finding-1cf8d96e0272707245799b339e017a18e32a61e573455e27f624941a6a68ed5c"
+      ]
+    }
+  ],
+  "assessment_summary": {
+    "ok": 1,
+    "finding": 1,
+    "unknown": 1
+  }
+}

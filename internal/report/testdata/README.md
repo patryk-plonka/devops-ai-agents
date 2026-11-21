@@ -18,8 +18,14 @@ recommendation types, an exact duplicate, all five displayed workflow classes,
 unknown targets, and a Dismissed observation that supersedes a New observation.
 Use the row's evidence link and ID to find the saved instance and its source times.
 
+[Schema 4](assessment/report.md) and its [sibling snapshot](assessment/run.json)
+come from `assessmentExample` in `../assessment_test.go`. The example traces an OK
+assessment to a newer Available observation, an empty Service Health query and
+Postponed Advisor context. Another resource shows both a known Fired alert and
+missing Resource Health evidence.
+
 The renderer tests require exact report bytes and matching sibling snapshot
 rendering. Link-resolution checks open each actual relative target and verify its
-run identity, revision and evidence IDs. The schema-2 and schema-3 directories
+run identity, revision and references. The schema-2 through schema-4 directories
 each pair a report with its matching snapshot, using the production filenames.
-The examples are not live-service evidence or operator acceptance.
+All examples use synthetic evidence.

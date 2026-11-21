@@ -18,11 +18,11 @@ func (c Collection) ResourceHealth(ctx context.Context, subscription string, emi
 		return fail("client_failure", "Cannot initialize Resource Health collection.", 1)
 	}
 	initial := "https://management.azure.com/subscriptions/" + subscription + "/providers/Microsoft.ResourceHealth/availabilityStatuses?api-version=2025-05-01"
-	return pages(ctx, c, subscription, healthRoute, initial, client.NewListBySubscriptionIDPager(nil), func(response armresourcehealth.AvailabilityStatusesClientListBySubscriptionIDResponse) (*string, error) {
+	return pages(ctx, c, subscription, healthRoute, initial, client.NewListBySubscriptionIDPager(nil), func(response armresourcehealth.AvailabilityStatusesClientListBySubscriptionIDResponse, rejected []health.RejectedRecordInput) (*string, error) {
 		if response.Value == nil {
 			return nil, fail("invalid_response", "Resource Health response has no observation list.", 1)
 		}
-		page := health.Page{CollectedAt: time.Now().UTC()}
+		page := health.Page{CollectedAt: time.Now().UTC(), RejectedScopes: rejected}
 		for _, status := range response.Value {
 			input := health.HealthInput{}
 			if status != nil {

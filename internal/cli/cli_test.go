@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -89,7 +90,7 @@ func TestCollectedScopeRemainsExplicitlyIncomplete(t *testing.T) {
 			t.Fatal("wrong scope")
 		}
 		initial := snapshot(t, a.Directory)
-		if initial.Outcome != "in_progress" || initial.SchemaVersion != 3 || initial.Sources["advisor"] != (health.Source{Status: "not_checked", Reason: "not_attempted"}) {
+		if initial.Outcome != "in_progress" || initial.SchemaVersion != 4 || !reflect.DeepEqual(initial.Sources["advisor"], health.Source{Status: "not_checked", Reason: "not_attempted"}) {
 			t.Fatal("initial checkpoint missing schema or unattempted Advisor state")
 		}
 		return nil
@@ -160,7 +161,7 @@ func TestAmbiguityRequiresTerminalAndExplicitSelection(t *testing.T) {
 		{"blank", "\n", true, false, 2, ""}, {"invalid", "99\n", true, false, 2, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			a, _, diag, _ := testApp(t)
+			a, out, diag, _ := testApp(t)
 			a.Terminal = tc.terminal
 			a.In = strings.NewReader(tc.input)
 			a.Discover = func(context.Context) ([]azure.Account, error) {
@@ -174,6 +175,12 @@ func TestAmbiguityRequiresTerminalAndExplicitSelection(t *testing.T) {
 			}
 			if code := a.Run(context.Background(), args); code != tc.code || validated != tc.id {
 				t.Fatalf("code %d validated %s: %s", code, validated, diag)
+			}
+			if tc.code == 2 {
+				r := assertPublished(t, a.Directory, strings.TrimSpace(out.String()))
+				if r.Outcome != "failed" || r.Scope != nil || r.AssessmentSummary.OK != 0 || r.Coverage != "incomplete" {
+					t.Fatal("unresolved selection produced an affirmative assessment")
+				}
 			}
 			if tc.id != "" && strings.Index(diag.String(), first) > strings.Index(diag.String(), second) {
 				t.Fatal("unstable selection order")

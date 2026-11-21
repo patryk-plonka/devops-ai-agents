@@ -121,6 +121,10 @@ func healthRecord(i int) string {
 	case 9:
 		properties = `{"availabilityState":"FutureState"}`
 	}
+	return integrationHealthRecord(i, status, properties)
+}
+
+func integrationHealthRecord(i int, status, properties string) string {
 	properties = strings.TrimSuffix(properties, "}")
 	if properties != "{" {
 		properties += ","
@@ -176,7 +180,7 @@ func requestSource(req *http.Request) string {
 	return ""
 }
 
-func assertIntegrationArtifacts(t *testing.T, a App, out, diagnostics *bytes.Buffer) health.Run {
+func assertIntegrationArtifacts(t *testing.T, a App, out, diagnostics *bytes.Buffer, coverage, headline string) health.Run {
 	t.Helper()
 	r := assertPublished(t, a.Directory, strings.TrimSpace(out.String()))
 	b, err := os.ReadFile(strings.TrimSpace(out.String()))
@@ -194,11 +198,12 @@ func assertIntegrationArtifacts(t *testing.T, a App, out, diagnostics *bytes.Buf
 			t.Fatal("sensitive source/profile/token/error or foreign scope escaped into saved output")
 		}
 	}
-	if r.Coverage != "incomplete" || !strings.Contains(text, "No resource is classified overall OK") {
+	if r.Coverage != coverage || !strings.Contains(text, "**"+headline) ||
+		!strings.Contains(diagnostics.String(), "overall coverage: "+coverage+". "+r.AssessmentSummary.ResourceCounts()+".") {
 		t.Fatal("overall coverage claim missing or misleading")
 	}
-	if r.SchemaVersion != 3 || !strings.Contains(text, "## Azure Advisor recommendations") {
-		t.Fatal("schema 3 Advisor section missing")
+	if r.SchemaVersion != 4 || !strings.Contains(text, "## Azure Advisor recommendations") {
+		t.Fatal("schema 4 Advisor section missing")
 	}
 	ids := map[string]bool{}
 	for _, e := range r.Evidence {
@@ -325,7 +330,7 @@ func TestFullFlowScaleByIDAndName(t *testing.T) {
 			if code := a.Run(integrationContext(t), []string{"health", "check", "--subscription", requested}); code != 0 {
 				t.Fatalf("exit %d: %s", code, diagnostics)
 			}
-			r := assertIntegrationArtifacts(t, a, out, diagnostics)
+			r := assertIntegrationArtifacts(t, a, out, diagnostics, "incomplete", "Incomplete coverage · ")
 			if r.Outcome != "completed" || r.Scope.SubscriptionID != first || r.Scope.TenantID != tenant || len(r.Resources) != 360 || len(r.Evidence) != 719 || len(r.Findings) != 6 || len(r.Observations) != 360 || counts["subscription"] != 1 || counts["inventory"] != 3 || counts["resource_health"] != 3 {
 				t.Fatalf("wrong full-flow counts: resources=%d evidence=%d findings=%d observations=%d requests=%v", len(r.Resources), len(r.Evidence), len(r.Findings), len(r.Observations), counts)
 			}
@@ -338,8 +343,8 @@ func TestFullFlowScaleByIDAndName(t *testing.T) {
 				states[o.ResourceID] = o.State
 			}
 			for i, want := range map[int]string{0: "Unavailable", 2: "Degraded", 5: "undetermined", 6: "Unknown", 7: "undetermined", 8: "undetermined", 9: "undetermined", 10: "Available", 359: "not_checked"} {
-				if states[integrationResource(i)] != want {
-					t.Fatalf("resource %d: got %s want %s", i, states[integrationResource(i)], want)
+				if got := states[health.CanonicalID(integrationResource(i))]; got != want {
+					t.Fatalf("resource %d: got %s want %s", i, got, want)
 				}
 			}
 			assertSyntheticLogin(t, log, true)
@@ -399,7 +404,7 @@ func TestFullFlowScopeAndIndependentFailures(t *testing.T) {
 			if code := a.Run(integrationContext(t), []string{"health", "check", "--subscription", first, "--debug"}); code != wantCode {
 				t.Fatalf("exit %d want %d: %s", code, wantCode, diagnostics)
 			}
-			r := assertIntegrationArtifacts(t, a, out, diagnostics)
+			r := assertIntegrationArtifacts(t, a, out, diagnostics, "incomplete", "Incomplete coverage · ")
 			if r.Outcome != outcome {
 				t.Fatal("incorrect saved outcome")
 			}
@@ -427,7 +432,7 @@ func TestFullFlowScopeAndIndependentFailures(t *testing.T) {
 				wantEvidence, wantFindings, wantGap := 2, 1, ""
 				switch scenario {
 				case "inventory denied":
-					wantEvidence, wantGap = 1, "inventory_unverified"
+					wantEvidence, wantGap = 1, "health_resource_absent_from_inventory"
 				case "health denied":
 					wantEvidence, wantFindings, wantGap = 1, 0, "health_not_checked"
 				case "both denied":
@@ -463,7 +468,7 @@ func assertGap(t *testing.T, r health.Run, reason string) {
 
 func TestFullFlowLaterPageFailures(t *testing.T) {
 	for _, source := range []string{"inventory", "resource_health"} {
-		for _, scenario := range []string{"timeout", "throttled", "unsafe host", "wrong subscription", "redirect", "registration", "repeat", "invalid envelope", "mixed records"} {
+		for _, scenario := range []string{"timeout", "throttled", "unsafe host", "wrong subscription", "redirect", "registration", "repeat", "invalid envelope", "alternate-case continuation", "mixed records"} {
 			t.Run(source+"/"+scenario, func(t *testing.T) {
 				counts := map[string]int{}
 				var a App
@@ -508,6 +513,9 @@ func TestFullFlowLaterPageFailures(t *testing.T) {
 						return armResponse(200, integrationList(route, []string{record}, "next")), nil
 					case "invalid envelope":
 						return armResponse(200, `{"value":"body-canary"}`), nil
+					case "alternate-case continuation":
+						body := integrationList(route, nil, "alternate-token-canary")
+						return armResponse(200, strings.Replace(body, `"nextLink":`, `"NextLink":`, 1)), nil
 					case "mixed records":
 						wrongScope := strings.ReplaceAll(record, first, second)
 						return armResponse(200, integrationList(route, []string{record, wrongScope, `{"id":"rejected-canary","properties":42,"tags":42}`}, "")), nil
@@ -518,7 +526,7 @@ func TestFullFlowLaterPageFailures(t *testing.T) {
 				if code := a.Run(integrationContext(t), []string{"health", "check", "--subscription", first, "--debug"}); code != 3 {
 					t.Fatalf("exit %d: %s", code, diagnostics)
 				}
-				r := assertIntegrationArtifacts(t, a, out, diagnostics)
+				r := assertIntegrationArtifacts(t, a, out, diagnostics, "incomplete", "Incomplete coverage · ")
 				reason, calls, pages := "collection_failed", 2, 1
 				switch scenario {
 				case "timeout":
@@ -531,7 +539,7 @@ func TestFullFlowLaterPageFailures(t *testing.T) {
 					reason = "read_boundary_rejected"
 				case "repeat":
 					reason, pages = "repeated_continuation", 2
-				case "invalid envelope":
+				case "invalid envelope", "alternate-case continuation":
 					reason = "invalid_response"
 				case "mixed records":
 					reason, pages = "invalid_records", 2
@@ -653,7 +661,7 @@ func TestGeneratedRunFilesAreIgnored(t *testing.T) {
 	if err := s.Save(&r); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PublishReport(report.Markdown); err != nil {
+	if err := s.PublishReport(context.Background(), report.Markdown); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{s.Path(), s.ReportPath()} {

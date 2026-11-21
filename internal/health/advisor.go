@@ -135,16 +135,8 @@ func (r *Run) advisorEvidence(input AdvisorInput, collected time.Time) (Evidence
 		facts.TypeID = CanonicalID(input.TypeID)
 	}
 
-	target := ""
-	targetScope := advisorPathScope(scopedARMPath(input.TargetResourceID, subscription))
-	switch {
-	case targetScope != advisorResourceScope && targetScope != advisorResourceGroupScope:
-		facts.AttributionLimitation = "unknown_resource_attribution"
-	case parent != "" && !strings.EqualFold(parent, input.TargetResourceID):
-		facts.AttributionLimitation = "conflicting_resource_attribution"
-	default:
-		target = input.TargetResourceID
-	}
+	target, limitation := advisorAttribution(input.TargetResourceID, parent, subscription)
+	facts.AttributionLimitation = limitation
 	return Evidence{
 		Source: advisorSource, Operation: AdvisorListOperation, APIVersion: AdvisorAPI,
 		EntityID: input.ID, SubscriptionID: subscription, ResourceID: target,
@@ -152,16 +144,23 @@ func (r *Run) advisorEvidence(input AdvisorInput, collected time.Time) (Evidence
 	}, true
 }
 
+func advisorAttribution(target, parent, subscription string) (string, string) {
+	targetScope := advisorPathScope(scopedARMPath(target, subscription))
+	switch {
+	case targetScope != advisorResourceScope && targetScope != advisorResourceGroupScope:
+		return "", "unknown_resource_attribution"
+	case parent != "" && !strings.EqualFold(parent, target):
+		return "", "conflicting_resource_attribution"
+	default:
+		return target, ""
+	}
+}
+
 func advisorSourceTime(value *time.Time) (*time.Time, bool) {
-	if value == nil || value.IsZero() {
+	if value != nil && value.IsZero() {
 		return nil, true
 	}
-	utc := utcTime(value)
-	// An offset can move a parsed timestamp outside JSON's four-digit year range.
-	if year := utc.Year(); year < 0 || year > 9999 {
-		return nil, false
-	}
-	return utc, true
+	return sourceTime(value)
 }
 
 func advisorEnum(value string, options ...string) string {
@@ -177,10 +176,7 @@ func advisorEnum(value string, options ...string) string {
 // classes used by strings.EqualFold. ASCII IDs keep the usual lowercase form.
 func canonicalAdvisorID(id string) string {
 	return strings.Map(func(r rune) rune {
-		canonical := r
-		for folded := unicode.SimpleFold(r); folded != r; folded = unicode.SimpleFold(folded) {
-			canonical = min(canonical, folded)
-		}
+		canonical := simpleFoldRepresentative(r)
 		if canonical <= unicode.MaxASCII {
 			return unicode.ToLower(canonical)
 		}
@@ -188,7 +184,15 @@ func canonicalAdvisorID(id string) string {
 	}, id)
 }
 
-func (r *Run) rebuildAdvisorCoverage() {
+func simpleFoldRepresentative(r rune) rune {
+	first := r
+	for folded := unicode.SimpleFold(r); folded != r; folded = unicode.SimpleFold(folded) {
+		first = min(first, folded)
+	}
+	return first
+}
+
+func (r *Run) rebuildAdvisorCoverage(proof *assessmentEvidence) {
 	r.AdvisorInstances = nil
 	groups := map[string][]Evidence{}
 	for _, e := range r.Evidence {
@@ -205,11 +209,23 @@ func (r *Run) rebuildAdvisorCoverage() {
 			row.EvidenceIDs = append(row.EvidenceIDs, e.ID)
 		}
 		facts, resource, supportingIDs, resolved := summarizeAdvisor(observations)
+		var conflicting []Evidence
+		if !resolved {
+			r.Gaps = append(r.Gaps, Gap{Source: advisorSource, EntityID: row.EntityID, Reason: "conflicting_advisor_evidence", EvidenceIDs: row.EvidenceIDs})
+			if proof != nil {
+				current := latestCandidates(observations, func(e Evidence) *time.Time { return e.Advisor.LastUpdated })
+				var decisionConflict bool
+				facts, resource, decisionConflict = summarizeAdvisorConflict(current)
+				supportingIDs = evidenceRefs(current)
+				if decisionConflict {
+					conflicting = current
+				}
+				resolved = !decisionConflict
+			}
+		}
 		row.AdvisorFacts, row.ResourceID = facts, canonicalAdvisorID(resource)
 		switch {
-		case !resolved:
-			r.Gaps = append(r.Gaps, Gap{Source: advisorSource, EntityID: row.EntityID, Reason: "conflicting_advisor_evidence", EvidenceIDs: row.EvidenceIDs})
-		case row.Status == advisorUnknown:
+		case resolved && row.Status == advisorUnknown:
 			r.Gaps = append(r.Gaps, Gap{Source: advisorSource, EntityID: row.EntityID, ResourceID: row.ResourceID, Reason: "unknown_advisor_status", EvidenceIDs: supportingIDs})
 		case row.Status == "New":
 			row.FindingID = stableID("finding-", key)
@@ -221,11 +237,66 @@ func (r *Run) rebuildAdvisorCoverage() {
 		if row.AttributionLimitation != "" {
 			r.Gaps = append(r.Gaps, Gap{Source: advisorSource, EntityID: row.EntityID, Reason: row.AttributionLimitation, EvidenceIDs: supportingIDs})
 		}
+		if proof != nil {
+			switch {
+			case len(conflicting) > 0:
+				r.blockTargets(advisorSource, row.EntityID, "conflicting_advisor_state_or_target", conflicting, supportingIDs, row.FindingID)
+			case row.Status == advisorUnknown:
+				r.block(advisorSource, row.EntityID, row.ResourceID, "unresolved_advisor_workflow", supportingIDs, "")
+			case row.Status == "New" && row.AttributionLimitation != "":
+				r.block(advisorSource, row.EntityID, "", row.AttributionLimitation, supportingIDs, row.FindingID)
+			case row.Status == "New" && advisorPathScope(scopedARMPath(row.ResourceID, first.SubscriptionID)) == advisorResourceGroupScope:
+				r.block(advisorSource, row.EntityID, row.ResourceID, "advisor_group_target_only", supportingIDs, row.FindingID)
+			}
+			proof.add(advisorSource, row.ResourceID, supportingIDs)
+			if row.Status == "Postponed" && row.ResourceID != "" {
+				target := canonicalFoldID(row.ResourceID)
+				proof.postponed[target] = append(proof.postponed[target], supportingIDs...)
+			}
+		}
 		r.AdvisorInstances = append(r.AdvisorInstances, row)
 	}
 	sort.Slice(r.AdvisorInstances, func(i, j int) bool {
 		return r.AdvisorInstances[i].EntityID < r.AdvisorInstances[j].EntityID
 	})
+}
+
+// The effective candidates can agree on workflow even when their other facts
+// disagree. Keep the disputed field values in evidence and summarize consensus.
+func summarizeAdvisorConflict(current []Evidence) (AdvisorFacts, string, bool) {
+	first := current[0]
+	facts, resource := *first.Advisor, first.ResourceID
+	workflowConflict, targetConflict := false, false
+	for _, e := range current[1:] {
+		f := e.Advisor
+		workflowConflict = workflowConflict || f.Status != first.Advisor.Status
+		targetConflict = targetConflict || !strings.EqualFold(e.ResourceID, first.ResourceID) ||
+			f.AttributionLimitation != first.Advisor.AttributionLimitation
+		if f.Category != facts.Category {
+			facts.Category = advisorUnknown
+		}
+		if f.Impact != facts.Impact {
+			facts.Impact = advisorUnknown
+		}
+		if f.TypeID != facts.TypeID {
+			facts.TypeID = ""
+		}
+		if f.LastUpdated == nil {
+			facts.LastUpdated = nil
+		}
+		if afterAdvisorTime(f.LastRefreshed, facts.LastRefreshed) {
+			facts.LastRefreshed = f.LastRefreshed
+		}
+	}
+	if workflowConflict {
+		facts.Status = advisorUnknown
+	}
+	if targetConflict {
+		resource = ""
+		facts.AttributionLimitation = "conflicting_resource_attribution"
+	}
+	blocking := workflowConflict || targetConflict && (facts.Status == "New" || facts.Status == advisorUnknown)
+	return facts, resource, blocking
 }
 
 // The state-change time can order conflicting facts. Evaluation and collection

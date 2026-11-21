@@ -17,7 +17,8 @@ import (
 // Markdown never fetches or infers evidence. Invalid references fail publication
 // rather than allowing an unsupported finding to appear in a saved report.
 func Markdown(r health.Run) ([]byte, error) {
-	if r.ID == "" || r.Revision < 1 || r.EndedAt == nil {
+	hasAssessments := r.SchemaVersion >= health.AssessmentSchemaVersion
+	if r.ID == "" || r.Revision < 1 || r.EndedAt == nil || hasAssessments && r.EndedAt.IsZero() {
 		return nil, errors.New("report requires a finalized snapshot")
 	}
 	switch r.Outcome {
@@ -67,10 +68,26 @@ func Markdown(r health.Run) ([]byte, error) {
 			return nil, err
 		}
 	}
+	var assessmentFindings map[string]health.Finding
+	if hasAssessments {
+		var err error
+		assessmentFindings, err = validateAssessmentReferences(r, evidence)
+		if err != nil {
+			return nil, err
+		}
+	}
 	var b strings.Builder
 	legacy := r.SchemaVersion == 1
 	if legacy {
 		b.WriteString("# Subscription Resource Health report\n\n**INCOMPLETE coverage.** Advisor, Service Health, and Azure Monitor are not checked in S-01. No resource is classified overall OK.\n\n")
+	} else if hasAssessments {
+		b.WriteString("# Subscription health report\n\n")
+		coverage := "Incomplete coverage"
+		if r.Coverage == "complete" {
+			coverage = "Complete coverage"
+		}
+		fmt.Fprintf(&b, "**%s · %s.**\n\n", coverage, r.AssessmentSummary.ResourceCounts())
+		b.WriteString("OK within the agreed checks means an inventoried resource had current Available Resource Health evidence and sufficient Service Health, Azure Monitor and Azure Advisor evidence within the saved query scopes and times. The counts cover observed inventory. A resource with a known finding and a missing check counts as unknown, with its finding shown in the assessment.\n\n")
 	} else {
 		b.WriteString("# Subscription health report\n\n**INCOMPLETE coverage.** No resource is classified overall OK.\n\n")
 		unchecked := []string{}
@@ -112,6 +129,10 @@ func Markdown(r health.Run) ([]byte, error) {
 		}
 	}
 	b.WriteString("\nCollector completion describes enumeration by that API. Inventory may omit child resources; an Available observation provides Resource Health evidence only. Failed checks and missing evidence do not establish resource faults.\n\n")
+	if hasAssessments {
+		writeAssessmentQueries(&b, r)
+		writeAssessments(&b, r, assessmentFindings)
+	}
 	if !legacy {
 		writeOperationalSections(&b, r)
 	}
@@ -140,7 +161,11 @@ func Markdown(r health.Run) ([]byte, error) {
 		return a.ID < c.ID
 	})
 	if len(findings) == 0 {
-		b.WriteString("No issue/event findings in the collected evidence. This does not establish complete coverage.\n\n")
+		if hasAssessments {
+			b.WriteString("No Resource Health issue or event findings in the collected evidence.\n\n")
+		} else {
+			b.WriteString("No issue/event findings in the collected evidence. This does not establish complete coverage.\n\n")
+		}
 	} else {
 		b.WriteString("| Category | Resource | Source observation | Finding ID | Evidence |\n| --- | --- | --- | --- | --- |\n")
 		for _, f := range findings {
@@ -182,36 +207,16 @@ func Markdown(r health.Run) ([]byte, error) {
 	if len(resources) == 0 {
 		b.WriteString("| None observed | — | — | — | — | — | — |\n")
 	}
-	b.WriteString("\n## Coverage gaps and failed checks\n\n")
-	if legacy {
-		b.WriteString("| Source | Resource | Reason | Evidence |\n| --- | --- | --- | --- |\n")
-	} else {
-		b.WriteString("| Source | Source entity | Resource attribution | Reason | Evidence |\n| --- | --- | --- | --- | --- |\n")
-	}
-	gaps := slices.Clone(r.Gaps)
-	sort.Slice(gaps, func(i, j int) bool {
-		a, c := gaps[i], gaps[j]
-		if legacy {
-			return a.Source+"\x00"+health.CanonicalID(a.ResourceID)+"\x00"+a.Reason < c.Source+"\x00"+health.CanonicalID(c.ResourceID)+"\x00"+c.Reason
-		}
-		return a.Source+"\x00"+health.CanonicalID(a.EntityID)+"\x00"+health.CanonicalID(a.ResourceID)+"\x00"+a.Reason+"\x00"+strings.Join(a.EvidenceIDs, ",") < c.Source+"\x00"+health.CanonicalID(c.EntityID)+"\x00"+health.CanonicalID(c.ResourceID)+"\x00"+c.Reason+"\x00"+strings.Join(c.EvidenceIDs, ",")
-	})
-	for _, g := range gaps {
-		if legacy {
-			fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", literal(g.Source), literal(g.ResourceID), literal(g.Reason), refs(g.EvidenceIDs))
-		} else {
-			attribution := literal(g.ResourceID)
-			if g.ResourceID == "" {
-				attribution = "Unknown; no affected resource established"
-			}
-			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", literal(g.Source), literal(g.EntityID), attribution, literal(g.Reason), refs(g.EvidenceIDs))
-		}
-	}
+	writeCoverageGaps(&b, r)
 	b.WriteString("\n## Execution diagnostics\n\n")
 	diagnostics := slices.Clone(r.Diagnostics)
 	sort.Strings(diagnostics)
 	if len(diagnostics) == 0 {
-		b.WriteString("No execution diagnostics. Overall coverage remains incomplete.\n\n")
+		if hasAssessments {
+			b.WriteString("No execution diagnostics.\n\n")
+		} else {
+			b.WriteString("No execution diagnostics. Overall coverage remains incomplete.\n\n")
+		}
 	} else {
 		for _, d := range diagnostics {
 			fmt.Fprintf(&b, "- %s\n", literal(d))
@@ -231,6 +236,9 @@ func Markdown(r health.Run) ([]byte, error) {
 		}
 		if !legacy && (e.Source == "service_health" || e.Source == "azure_monitor") {
 			fmt.Fprintf(&b, "### %s\n\n- Record: %s\n- Source: %s; operation: %s; API version: %s.\n- Source entity: %s; selected subscription: %s.\n- Resource attribution: %s.\n- Kind: %s; disposition: %s.\n- Collected (UTC): %s; source reported (UTC): %s; source occurred (UTC): %s.\n", literal(e.ID), refs([]string{e.ID}), literal(e.Source), literal(e.Operation), literal(e.APIVersion), literal(e.EntityID), literal(e.SubscriptionID), resourceAttribution(e.ResourceID), literal(e.Kind), literal(e.Disposition), stamp(&e.CollectedAt), stamp(e.ReportedAt), stamp(e.OccurredAt))
+			if hasAssessments && e.LastCollectedAt != nil {
+				fmt.Fprintf(&b, "- Last collected (UTC): %s.\n", stamp(e.LastCollectedAt))
+			}
 			writeOperationalFacts(&b, e)
 			b.WriteByte('\n')
 			continue
@@ -246,6 +254,63 @@ func Markdown(r health.Run) ([]byte, error) {
 		b.WriteString("No evidence collected. Consult source coverage and execution diagnostics.\n")
 	}
 	return []byte(b.String()), nil
+}
+
+func writeCoverageGaps(b *strings.Builder, r health.Run) {
+	const heading = "\n## Coverage gaps and failed checks\n\n"
+	legacy := r.SchemaVersion == 1
+	gaps := slices.Clone(r.Gaps)
+	sort.Slice(gaps, func(i, j int) bool {
+		a, c := gaps[i], gaps[j]
+		if legacy {
+			return a.Source+"\x00"+health.CanonicalID(a.ResourceID)+"\x00"+a.Reason < c.Source+"\x00"+health.CanonicalID(c.ResourceID)+"\x00"+c.Reason
+		}
+		return a.Source+"\x00"+health.CanonicalID(a.EntityID)+"\x00"+health.CanonicalID(a.ResourceID)+"\x00"+a.Reason+"\x00"+strings.Join(a.EvidenceIDs, ",") < c.Source+"\x00"+health.CanonicalID(c.EntityID)+"\x00"+health.CanonicalID(c.ResourceID)+"\x00"+c.Reason+"\x00"+strings.Join(c.EvidenceIDs, ",")
+	})
+	b.WriteString(heading)
+	if r.SchemaVersion >= health.AssessmentSchemaVersion {
+		writeAssessmentGapRows(b, gaps, true, "No decision-blocking gaps recorded.")
+		b.WriteString("\n## Source limits and evidence notes\n\n")
+		writeAssessmentGapRows(b, gaps, false, "No source limits or evidence notes recorded.")
+		return
+	}
+	if legacy {
+		b.WriteString("| Source | Resource | Reason | Evidence |\n| --- | --- | --- | --- |\n")
+	} else {
+		b.WriteString("| Source | Source entity | Resource attribution | Reason | Evidence |\n| --- | --- | --- | --- | --- |\n")
+	}
+	for _, g := range gaps {
+		if legacy {
+			fmt.Fprintf(b, "| %s | %s | %s | %s |\n", literal(g.Source), literal(g.ResourceID), literal(g.Reason), refs(g.EvidenceIDs))
+		} else {
+			attribution := literal(g.ResourceID)
+			if g.ResourceID == "" {
+				attribution = "Unknown; no affected resource established"
+			}
+			fmt.Fprintf(b, "| %s | %s | %s | %s | %s |\n", literal(g.Source), literal(g.EntityID), attribution, literal(g.Reason), refs(g.EvidenceIDs))
+		}
+	}
+}
+
+func writeAssessmentGapRows(b *strings.Builder, gaps []health.Gap, blocking bool, emptyMessage string) {
+	wroteHeader := false
+	for _, gap := range gaps {
+		if gap.Blocking != blocking {
+			continue
+		}
+		if !wroteHeader {
+			b.WriteString("| Source | Source entity | Resource scope | Reason | Evidence |\n| --- | --- | --- | --- | --- |\n")
+			wroteHeader = true
+		}
+		scope := literal(gap.ResourceID)
+		if blocking && gap.ResourceID == "" {
+			scope = "Subscription-wide or unresolved"
+		}
+		fmt.Fprintf(b, "| %s | %s | %s | %s | %s |\n", literal(gap.Source), literal(gap.EntityID), scope, literal(gap.Reason), refs(gap.EvidenceIDs))
+	}
+	if !wroteHeader {
+		fmt.Fprintln(b, emptyMessage)
+	}
 }
 
 // Character references render punctuation literally without creating Markdown

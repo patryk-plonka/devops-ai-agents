@@ -10,6 +10,13 @@ const ResourceHealthAPI = "2025-05-01"
 const ServiceHealthAPI = "2025-05-01"
 const MonitorAPI = "2019-03-01"
 
+const (
+	inventoryOperation      = "Resources.List"
+	resourceHealthOperation = "AvailabilityStatuses.ListBySubscriptionId"
+	serviceHealthOperation  = "Events.ListBySubscriptionId"
+	monitorOperation        = "Alerts.GetAll"
+)
+
 // Inputs whitelist source facts. SDK objects and arbitrary descriptions never
 // cross this boundary. NormalizePage filters these facts before checkpointing.
 type ResourceInput struct {
@@ -26,13 +33,21 @@ type HealthInput struct {
 	ReportedAt        *time.Time
 	OccurredAt        *time.Time
 }
+
+// RejectedRecordInput carries only independently decoded attribution fields.
+// Each input accompanies one rejected placeholder in the source's page.
+type RejectedRecordInput struct {
+	ID, TargetResourceID string
+}
+
 type Page struct {
-	Resources     []ResourceInput
-	Health        []HealthInput
-	ServiceHealth []ServiceHealthInput
-	Monitor       []MonitorInput
-	Advisor       []AdvisorInput
-	CollectedAt   time.Time
+	Resources      []ResourceInput
+	Health         []HealthInput
+	ServiceHealth  []ServiceHealthInput
+	Monitor        []MonitorInput
+	Advisor        []AdvisorInput
+	RejectedScopes []RejectedRecordInput
+	CollectedAt    time.Time
 }
 type Collector func(context.Context, string, func(Page) error) error
 
@@ -49,29 +64,39 @@ type Resource struct {
 	EvidenceIDs []string `json:"evidence_ids"`
 }
 type Evidence struct {
-	ID             string              `json:"id"`
-	Source         string              `json:"source"`
-	Operation      string              `json:"operation"`
-	APIVersion     string              `json:"api_version"`
-	ResourceID     string              `json:"resource_id,omitempty"`
-	EntityID       string              `json:"entity_id,omitempty"`
-	SubscriptionID string              `json:"subscription_id,omitempty"`
-	ServiceHealth  *ServiceHealthFacts `json:"service_health,omitempty"`
-	Monitor        *MonitorFacts       `json:"monitor,omitempty"`
-	Advisor        *AdvisorFacts       `json:"advisor,omitempty"`
-	Disposition    string              `json:"disposition,omitempty"`
-	Limitations    []string            `json:"limitations,omitempty"`
-	StatusID       string              `json:"status_id,omitempty"`
-	StatusRole     string              `json:"status_role,omitempty"`
-	EventID        string              `json:"event_id,omitempty"`
-	EventIDs       []string            `json:"event_ids,omitempty"`
-	Kind           string              `json:"kind"`
-	State          string              `json:"state,omitempty"`
-	CollectedAt    time.Time           `json:"collected_at"`
-	ReportedAt     *time.Time          `json:"source_reported_at,omitempty"`
-	OccurredAt     *time.Time          `json:"source_occurred_at,omitempty"`
-	Resource       *ResourceFacts      `json:"resource,omitempty"`
+	ID              string              `json:"id"`
+	Source          string              `json:"source"`
+	Operation       string              `json:"operation"`
+	APIVersion      string              `json:"api_version"`
+	ResourceID      string              `json:"resource_id,omitempty"`
+	EntityID        string              `json:"entity_id,omitempty"`
+	SubscriptionID  string              `json:"subscription_id,omitempty"`
+	ServiceHealth   *ServiceHealthFacts `json:"service_health,omitempty"`
+	Monitor         *MonitorFacts       `json:"monitor,omitempty"`
+	Advisor         *AdvisorFacts       `json:"advisor,omitempty"`
+	Disposition     string              `json:"disposition,omitempty"`
+	Limitations     []string            `json:"limitations,omitempty"`
+	StatusID        string              `json:"status_id,omitempty"`
+	StatusRole      string              `json:"status_role,omitempty"`
+	EventID         string              `json:"event_id,omitempty"`
+	EventIDs        []string            `json:"event_ids,omitempty"`
+	Kind            string              `json:"kind"`
+	State           string              `json:"state,omitempty"`
+	CollectedAt     time.Time           `json:"collected_at"`
+	LastCollectedAt *time.Time          `json:"last_collected_at,omitempty"`
+	ReportedAt      *time.Time          `json:"source_reported_at,omitempty"`
+	OccurredAt      *time.Time          `json:"source_occurred_at,omitempty"`
+	Resource        *ResourceFacts      `json:"resource,omitempty"`
 }
+
+// LatestCollectionTime returns the latest saved read of this exact observation.
+func (e Evidence) LatestCollectionTime() time.Time {
+	if e.LastCollectedAt != nil && e.LastCollectedAt.After(e.CollectedAt) {
+		return *e.LastCollectedAt
+	}
+	return e.CollectedAt
+}
+
 type Observation struct {
 	ResourceID  string   `json:"resource_id"`
 	State       string   `json:"state"`
@@ -94,4 +119,6 @@ type Gap struct {
 	ResourceID  string   `json:"resource_id,omitempty"`
 	Reason      string   `json:"reason"`
 	EvidenceIDs []string `json:"evidence_ids,omitempty"`
+	Blocking    bool     `json:"blocking,omitempty"`
+	FindingID   string   `json:"finding_id,omitempty"`
 }

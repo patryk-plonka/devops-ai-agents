@@ -15,6 +15,7 @@ const alertIdentity = "/subscriptions/" + testSubscription + "/providers/Microso
 
 func operationalRun() Run {
 	r := scopedRun()
+	r.SchemaVersion = 2
 	r.StartedAt = operationalReference
 	sh, monitor := ServiceHealthQuery(r.StartedAt), MonitorQuery(r.StartedAt)
 	r.Sources["service_health"] = Source{Status: "in_progress", Query: &sh}
@@ -36,8 +37,8 @@ func normalizeMonitor(r *Run, inputs ...MonitorInput) {
 
 func TestOperationalQueryPoliciesAndSchema(t *testing.T) {
 	r := NewRun("synthetic", "test")
-	if r.SchemaVersion != 3 {
-		t.Fatal("new runs must use schema 3")
+	if r.SchemaVersion != 4 {
+		t.Fatal("new runs must use schema 4")
 	}
 	reference := operationalReference.In(time.FixedZone("test", 3600))
 	q := ServiceHealthQuery(reference)

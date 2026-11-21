@@ -2,6 +2,7 @@ package runstore
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -194,7 +195,7 @@ func TestReportPublicationUsesCommittedRevisionAndPreservesPriorReport(t *testin
 		}
 		return []byte(fmt.Sprintf("run=%s revision=%d", saved.ID, saved.Revision)), nil
 	}
-	if err := s.PublishReport(render); err != nil {
+	if err := s.PublishReport(context.Background(), render); err != nil {
 		t.Fatal(err)
 	}
 	before, err := os.ReadFile(s.ReportPath())
@@ -216,7 +217,7 @@ func TestReportPublicationUsesCommittedRevisionAndPreservesPriorReport(t *testin
 		t.Fatal(err)
 	}
 	// A render failure keeps both the newer JSON checkpoint and older report.
-	if err := s.PublishReport(func(saved health.Run) ([]byte, error) {
+	if err := s.PublishReport(context.Background(), func(saved health.Run) ([]byte, error) {
 		if saved.Outcome != "partial" {
 			t.Fatal("stale snapshot rendered")
 		}
@@ -228,6 +229,19 @@ func TestReportPublicationUsesCommittedRevisionAndPreservesPriorReport(t *testin
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatal("render failure damaged report")
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err = s.PublishReport(ctx, func(health.Run) ([]byte, error) {
+		cancel()
+		return []byte("cancelled render should not be published"), nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("publication ignored render cancellation: %v", err)
+	}
+	after, err = os.ReadFile(s.ReportPath())
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("cancellation damaged report")
+	}
 	snapshot, err := os.ReadFile(s.Path())
 	if err != nil {
 		t.Fatal(err)
@@ -238,7 +252,7 @@ func TestReportPublicationUsesCommittedRevisionAndPreservesPriorReport(t *testin
 	}
 	// Publishing reads persisted facts even if the caller changes its in-memory copy.
 	run.Outcome = "failed"
-	if err := s.PublishReport(func(saved health.Run) ([]byte, error) {
+	if err := s.PublishReport(context.Background(), func(saved health.Run) ([]byte, error) {
 		if saved.Outcome != "partial" {
 			t.Fatal("uncommitted state rendered")
 		}
@@ -266,7 +280,7 @@ func TestReportWriteFailureAndSymlinkStayInsideRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	render := func(health.Run) ([]byte, error) { return []byte("report"), nil }
-	if err := s.PublishReport(render); err != nil {
+	if err := s.PublishReport(context.Background(), render); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(outside)
@@ -283,7 +297,7 @@ func TestReportWriteFailureAndSymlinkStayInsideRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PublishReport(render); err == nil {
+	if err := s.PublishReport(context.Background(), render); err == nil {
 		t.Fatal("report directory accepted")
 	}
 	after, err := os.ReadFile(s.Path())

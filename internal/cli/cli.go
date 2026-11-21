@@ -21,7 +21,7 @@ import (
 type Storage interface {
 	Save(*health.Run) error
 	Path() string
-	PublishReport(func(health.Run) ([]byte, error)) error
+	PublishReport(context.Context, func(health.Run) ([]byte, error)) error
 	ReportPath() string
 	ReportExists() (bool, error)
 	Close() error
@@ -40,7 +40,12 @@ type App struct {
 	Render                      func(health.Run) ([]byte, error)
 }
 
-const usage = "Usage: devops-ai-agents health check --subscription <id-or-full-name> [--non-interactive] [--debug]\n--debug: print filtered Azure SDK request, status, timing, and retry diagnostics to stderr.\nSaves a Markdown report and normalized evidence; overall coverage remains incomplete.\n"
+const usage = `Usage: devops-ai-agents health check --subscription <id-or-full-name> [--non-interactive] [--debug]
+--debug: print filtered Azure SDK request, status, timing, and retry diagnostics to stderr.
+Saves Markdown and evidence with coverage and resource counts. OK applies within the saved checks and query windows.
+Exit codes: 0 all collectors completed and report delivered (or help), 3 partial execution with useful results,
+            2 invalid input or subscription selection, 1 execution or delivery failure, 130 interrupted.
+`
 
 func (a App) Run(ctx context.Context, args []string) int {
 	// SDK package initialization can enable logging from the environment. Override
@@ -137,14 +142,12 @@ func (a App) Run(ctx context.Context, args []string) int {
 		if render == nil {
 			render = report.Markdown
 		}
-		err := store.PublishReport(func(saved health.Run) ([]byte, error) {
-			b, err := render(saved)
-			if ctx.Err() != nil && saved.Outcome != "cancelled" {
-				return nil, ctx.Err()
-			}
-			return b, err
-		})
-		if ctx.Err() != nil && run.Outcome != "cancelled" {
+		publishCtx := ctx
+		if run.Outcome == "cancelled" {
+			publishCtx = context.WithoutCancel(ctx)
+		}
+		err := store.PublishReport(publishCtx, render)
+		if err != nil && ctx.Err() != nil && run.Outcome != "cancelled" {
 			return finish("cancelled", "interrupted", "Run cancelled; overall coverage is incomplete.", 130)
 		}
 		if err != nil {
@@ -159,7 +162,15 @@ func (a App) Run(ctx context.Context, args []string) int {
 				run.Outcome = "cancelled"
 			}
 			run.Diagnostics = append(run.Diagnostics, "report_publication_failed")
-			if err := store.Save(&run); err != nil {
+			run.RebuildCoverage()
+			saveErr := store.Save(&run)
+			if saveErr == nil && run.Outcome != "cancelled" && ctx.Err() != nil {
+				run.Outcome = "cancelled"
+				run.Diagnostics = append(run.Diagnostics, "interrupted")
+				run.RebuildCoverage()
+				saveErr = store.Save(&run)
+			}
+			if saveErr != nil {
 				fmt.Fprintln(a.Err, "Could not save the report-publication failure diagnostic.")
 			}
 			retained()
@@ -170,7 +181,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 			return 1
 		}
 		fmt.Fprintln(a.Err, message)
-		fmt.Fprintf(a.Err, "Execution: %s; overall coverage: incomplete. Report saved: %s\nEvidence snapshot: %s (revision %d).\n", outcome, store.ReportPath(), store.Path(), run.Revision)
+		fmt.Fprintf(a.Err, "Execution: %s, overall coverage: %s. %s. Report saved: %s\nEvidence snapshot: %s (revision %d).\n",
+			run.Outcome, run.Coverage, run.AssessmentSummary.ResourceCounts(), store.ReportPath(), store.Path(), run.Revision)
 		if _, err := fmt.Fprintln(a.Out, store.ReportPath()); err != nil {
 			fmt.Fprintf(a.Err, "Could not write the saved report path to stdout. The report remains available at %s.\n", store.ReportPath())
 			if code == 130 || ctx.Err() != nil {

@@ -27,11 +27,11 @@ func (c Collection) ServiceHealth(ctx context.Context, subscription string, emit
 	date := query.QueryStartTime
 	initial := "https://management.azure.com/subscriptions/" + subscription + "/providers/Microsoft.ResourceHealth/events?api-version=2025-05-01&queryStartTime=" + date
 	pager := client.NewListBySubscriptionIDPager(&armresourcehealth.EventsClientListBySubscriptionIDOptions{QueryStartTime: &date})
-	return pages(ctx, c, subscription, serviceHealthRoute, initial, pager, func(response armresourcehealth.EventsClientListBySubscriptionIDResponse) (*string, error) {
+	return pages(ctx, c, subscription, serviceHealthRoute, initial, pager, func(response armresourcehealth.EventsClientListBySubscriptionIDResponse, rejected []health.RejectedRecordInput) (*string, error) {
 		if response.Value == nil {
 			return nil, fail("invalid_response", "Service Health response has no event list.", 1)
 		}
-		page := health.Page{CollectedAt: time.Now().UTC()}
+		page := health.Page{CollectedAt: time.Now().UTC(), RejectedScopes: rejected}
 		for _, event := range response.Value {
 			input := health.ServiceHealthInput{}
 			if event != nil {

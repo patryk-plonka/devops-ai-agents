@@ -2,6 +2,7 @@ package runstore
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -49,7 +50,7 @@ func TestReportSnapshotsPublishCommittedFacts(t *testing.T) {
 			run.Findings = nil
 			run.Sources = nil
 			run.AdvisorInstances = nil
-			if err := s.PublishReport(report.Markdown); err != nil {
+			if err := s.PublishReport(context.Background(), report.Markdown); err != nil {
 				t.Fatal(err)
 			}
 			published, err := os.ReadFile(s.ReportPath())
@@ -84,7 +85,7 @@ func TestReportSnapshotsPublishCommittedFacts(t *testing.T) {
 			if err := s.Save(&saved); err != nil {
 				t.Fatal(err)
 			}
-			if err := s.PublishReport(report.Markdown); err == nil {
+			if err := s.PublishReport(context.Background(), report.Markdown); err == nil {
 				t.Fatal("unsupported reference published")
 			}
 			after, err := os.ReadFile(s.ReportPath())

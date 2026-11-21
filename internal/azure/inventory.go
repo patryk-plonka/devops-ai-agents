@@ -26,11 +26,11 @@ func (c Collection) Inventory(ctx context.Context, subscription string, emit fun
 		return fail("client_failure", "Cannot initialize inventory collection.", 1)
 	}
 	initial := "https://management.azure.com/subscriptions/" + subscription + "/resources?api-version=2025-04-01"
-	return pages(ctx, c, subscription, inventoryRoute, initial, client.NewListPager(nil), func(response armresources.ClientListResponse) (*string, error) {
+	return pages(ctx, c, subscription, inventoryRoute, initial, client.NewListPager(nil), func(response armresources.ClientListResponse, rejected []health.RejectedRecordInput) (*string, error) {
 		if response.Value == nil {
 			return nil, fail("invalid_response", "Inventory response has no resource list.", 1)
 		}
-		page := health.Page{CollectedAt: time.Now().UTC()}
+		page := health.Page{CollectedAt: time.Now().UTC(), RejectedScopes: rejected}
 		for _, resource := range response.Value {
 			if resource == nil {
 				page.Resources = append(page.Resources, health.ResourceInput{})

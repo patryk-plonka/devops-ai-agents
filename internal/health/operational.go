@@ -1,10 +1,14 @@
 package health
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"time"
 )
+
+const conflictingServiceHealthRegionalState = "conflicting_service_health_regional_state"
+const unverifiedServiceHealthRegionLabels = "unverified_service_health_region_labels"
 
 // These inputs are whitelists, not SDK or wire objects. Narrative, tenant lists,
 // query content, arbitrary links and personal identifiers have no input field.
@@ -98,8 +102,14 @@ func (r *Run) serviceEvidence(input ServiceHealthInput, collected time.Time) (Ev
 	if !input.PropertiesPresent || !entityID(input.ID, subscription, "Microsoft.ResourceHealth", "events", true) {
 		return Evidence{}, false
 	}
-	facts := &ServiceHealthFacts{Category: r.safeLabel(input.EventType), Status: r.safeLabel(input.Status), Level: r.safeLabel(input.Level), EventSource: r.safeLabel(input.EventSource), ImpactStartTime: utcTime(input.ImpactStartTime), ImpactMitigationTime: utcTime(input.ImpactMitigationTime), Sensitive: copyBool(input.Sensitive), Impact: []ServiceImpactFacts{}}
-	e := Evidence{Source: "service_health", Operation: "Events.ListBySubscriptionId", APIVersion: ServiceHealthAPI, EntityID: input.ID, SubscriptionID: subscription, Kind: "service_health_event", State: facts.Status, CollectedAt: collected, ReportedAt: utcTime(input.LastUpdateTime), OccurredAt: facts.ImpactStartTime, ServiceHealth: facts, Disposition: "inactive"}
+	updated, updatedValid := sourceTime(input.LastUpdateTime)
+	start, startValid := sourceTime(input.ImpactStartTime)
+	mitigation, mitigationValid := sourceTime(input.ImpactMitigationTime)
+	if !updatedValid || !startValid || !mitigationValid {
+		return Evidence{}, false
+	}
+	facts := &ServiceHealthFacts{Category: r.safeLabel(input.EventType), Status: r.safeLabel(input.Status), Level: r.safeLabel(input.Level), EventSource: r.safeLabel(input.EventSource), ImpactStartTime: start, ImpactMitigationTime: mitigation, Sensitive: copyBool(input.Sensitive), Impact: []ServiceImpactFacts{}}
+	e := Evidence{Source: "service_health", Operation: serviceHealthOperation, APIVersion: ServiceHealthAPI, EntityID: input.ID, SubscriptionID: subscription, Kind: "service_health_event", State: facts.Status, CollectedAt: collected, ReportedAt: updated, OccurredAt: facts.ImpactStartTime, ServiceHealth: facts, Disposition: "inactive"}
 	// Filtering persisted labels must not turn an unrecognized source enum into
 	// a known category or state. Interpret the original values exactly.
 	selected, known := false, true
@@ -132,40 +142,62 @@ func (r *Run) serviceEvidence(input ServiceHealthInput, collected time.Time) (Ev
 	} else if e.ReportedAt.Before(*query.Cutoff) && e.Disposition != "unclassified" {
 		e.Disposition = "excluded"
 	}
+	if r.SchemaVersion >= AssessmentSchemaVersion && e.Disposition == "unclassified" {
+		switch {
+		case query != nil && query.Cutoff != nil && e.ReportedAt != nil &&
+			!e.ReportedAt.IsZero() && e.ReportedAt.Before(*query.Cutoff):
+			e.Disposition = "excluded"
+		case input.Status == "Resolved":
+			e.Disposition = "inactive"
+		}
+	}
 	if input.EventType == "SecurityAdvisory" || facts.Sensitive != nil && *facts.Sensitive {
 		e.Limitations = append(e.Limitations, "sensitive_details_not_retrieved")
 	}
 	if len(input.Impact) == 0 {
 		e.Limitations = append(e.Limitations, "missing_service_region_attribution")
 	}
+	checkRegionalState := r.SchemaVersion >= AssessmentSchemaVersion && input.EventType == "ServiceIssue" && input.Status == "Resolved" &&
+		e.ReportedAt != nil && !e.ReportedAt.IsZero() && query != nil && query.Cutoff != nil && !query.ReferenceAt.IsZero()
 	for _, impact := range input.Impact {
 		accepted := ServiceImpactFacts{Regions: []ServiceRegionFacts{}}
 		for _, region := range impact.Regions {
 			attribution := "unknown"
-			if len(region.ImpactedSubscriptions) > 0 {
-				hasSelected := false
-				for _, id := range region.ImpactedSubscriptions {
-					if strings.EqualFold(id, subscription) {
-						hasSelected = true
-					}
+			unknownScope := len(region.ImpactedSubscriptions) == 0
+			for _, id := range region.ImpactedSubscriptions {
+				if strings.EqualFold(id, subscription) {
+					attribution = "selected_subscription"
+					break
 				}
-				if !hasSelected {
+				unknownScope = unknownScope || r.SchemaVersion >= AssessmentSchemaVersion && !subscriptionUUID.MatchString(id)
+			}
+			if attribution == "unknown" {
+				if !unknownScope {
 					e.Limitations = append(e.Limitations, "conflicting_subscription_attribution")
 					continue // No foreign region/scope claim reaches a checkpoint.
 				}
-				attribution = "selected_subscription"
-			} else {
 				e.Limitations = append(e.Limitations, "unknown_region_attribution")
+			}
+			regionUpdated, valid := sourceTime(region.LastUpdateTime)
+			if !valid {
+				return Evidence{}, false
+			}
+			if checkRegionalState && region.Status == "Active" &&
+				regionUpdated != nil && regionUpdated.After(*e.ReportedAt) && !regionUpdated.Before(*query.Cutoff) {
+				e.Limitations = append(e.Limitations, conflictingServiceHealthRegionalState)
 			}
 			status := r.safeLabel(region.Status)
 			if region.Status != "Active" && region.Status != "Resolved" {
 				e.Limitations = append(e.Limitations, "unknown_region_state")
 			}
 			name := r.safeLabel(region.Name)
+			if r.SchemaVersion >= AssessmentSchemaVersion && name != region.Name {
+				e.Limitations = append(e.Limitations, unverifiedServiceHealthRegionLabels)
+			}
 			if name == "" {
 				e.Limitations = append(e.Limitations, "missing_region_attribution")
 			}
-			accepted.Regions = append(accepted.Regions, ServiceRegionFacts{Name: name, Status: status, LastUpdateTime: utcTime(region.LastUpdateTime), Attribution: attribution})
+			accepted.Regions = append(accepted.Regions, ServiceRegionFacts{Name: name, Status: status, LastUpdateTime: regionUpdated, Attribution: attribution})
 		}
 		if len(accepted.Regions) == 0 {
 			if len(impact.Regions) != 0 {
@@ -174,6 +206,9 @@ func (r *Run) serviceEvidence(input ServiceHealthInput, collected time.Time) (Ev
 			e.Limitations = append(e.Limitations, "missing_region_attribution")
 		}
 		accepted.Service = r.safeLabel(impact.Service)
+		if r.SchemaVersion >= AssessmentSchemaVersion && accepted.Service != impact.Service {
+			e.Limitations = append(e.Limitations, unverifiedServiceHealthRegionLabels)
+		}
 		if accepted.Service == "" {
 			e.Limitations = append(e.Limitations, "missing_service_attribution")
 		}
@@ -192,12 +227,18 @@ func (r *Run) monitorEvidence(input MonitorInput, collected time.Time) (Evidence
 	if !input.PropertiesPresent || !entityID(input.ID, subscription, "Microsoft.AlertsManagement", "alerts", false) {
 		return Evidence{}, false
 	}
-	facts := &MonitorFacts{SignalType: r.safeLabel(input.SignalType), Condition: r.safeLabel(input.Condition), WorkflowState: r.safeLabel(input.WorkflowState), Severity: r.safeLabel(input.Severity), IsSuppressed: copyBool(input.IsSuppressed), LastModifiedTimeByMonitorService: utcTime(input.LastModifiedTimeByMonitorService), Attribution: "unknown"}
-	e := Evidence{Source: "azure_monitor", Operation: "Alerts.GetAll", APIVersion: MonitorAPI, EntityID: input.ID, SubscriptionID: subscription, Kind: "monitor_alert", State: facts.Condition, Monitor: facts, CollectedAt: collected, ReportedAt: utcTime(input.LastModifiedTime), OccurredAt: utcTime(input.StartTime), Disposition: "inactive"}
+	modified, modifiedValid := sourceTime(input.LastModifiedTime)
+	start, startValid := sourceTime(input.StartTime)
+	serviceModified, serviceModifiedValid := sourceTime(input.LastModifiedTimeByMonitorService)
+	if !modifiedValid || !startValid || !serviceModifiedValid {
+		return Evidence{}, false
+	}
+	facts := &MonitorFacts{SignalType: r.safeLabel(input.SignalType), Condition: r.safeLabel(input.Condition), WorkflowState: r.safeLabel(input.WorkflowState), Severity: r.safeLabel(input.Severity), IsSuppressed: copyBool(input.IsSuppressed), LastModifiedTimeByMonitorService: serviceModified, Attribution: "unknown"}
+	e := Evidence{Source: "azure_monitor", Operation: monitorOperation, APIVersion: MonitorAPI, EntityID: input.ID, SubscriptionID: subscription, Kind: "monitor_alert", State: facts.Condition, Monitor: facts, CollectedAt: collected, ReportedAt: modified, OccurredAt: start, Disposition: "inactive"}
 	if ResourceID(input.TargetResourceID, subscription) {
 		e.ResourceID = input.TargetResourceID
 		facts.Attribution = "reported_target"
-		if strings.Contains(strings.ToLower(e.ResourceID), "/providers/microsoft.operationalinsights/workspaces/") {
+		if monitorWorkspaceTarget(e.ResourceID) {
 			e.Limitations = append(e.Limitations, "workspace_target_only")
 		}
 	} else {
@@ -220,6 +261,9 @@ func (r *Run) monitorEvidence(input MonitorInput, collected time.Time) (Evidence
 	} else if input.Condition == "Fired" && e.Disposition == "inactive" {
 		e.Disposition = "active"
 	}
+	if r.SchemaVersion >= AssessmentSchemaVersion && input.Condition == "Resolved" && e.Disposition == "unclassified" {
+		e.Disposition = "inactive"
+	}
 	if input.WorkflowState != "" && input.WorkflowState != "New" && input.WorkflowState != "Acknowledged" && input.WorkflowState != "Closed" {
 		e.Limitations = append(e.Limitations, "unknown_workflow_state")
 	}
@@ -228,6 +272,10 @@ func (r *Run) monitorEvidence(input MonitorInput, collected time.Time) (Evidence
 	}
 	e.Limitations = sortedUnique(e.Limitations)
 	return e, true
+}
+
+func monitorWorkspaceTarget(id string) bool {
+	return strings.Contains(canonicalFoldID(id), "/providers/microsoft.operationalinsights/workspaces/")
 }
 
 func copyBool(value *bool) *bool {
@@ -261,15 +309,18 @@ func (r *Run) addOperational(e Evidence) {
 }
 
 // Rebuild operational views from evidence; retrieval order never chooses state.
-func (r *Run) rebuildOperationalCoverage() {
+func (r *Run) rebuildOperationalCoverage(proof *assessmentEvidence) {
 	groups := map[string][]Evidence{}
 	for _, e := range r.Evidence {
 		if e.Source != "service_health" && e.Source != "azure_monitor" {
 			continue
 		}
-		key := e.Source + "\x00" + CanonicalID(e.SubscriptionID) + "\x00" + CanonicalID(e.EntityID)
+		key := e.Source + "\x00" + CanonicalID(e.SubscriptionID) + "\x00" + r.identityKey(e.EntityID)
 		groups[key] = append(groups[key], e)
 		for _, reason := range e.Limitations {
+			if reason == conflictingServiceHealthRegionalState {
+				continue // The effective event can contribute a blocking gap below.
+			}
 			r.Gaps = append(r.Gaps, Gap{Source: e.Source, EntityID: e.EntityID, ResourceID: e.ResourceID, Reason: reason, EvidenceIDs: []string{e.ID}})
 		}
 	}
@@ -290,6 +341,10 @@ func (r *Run) rebuildOperationalCoverage() {
 	}
 	for key, observations := range groups {
 		sort.Slice(observations, func(i, j int) bool { return observations[i].ID < observations[j].ID })
+		var regionalConflict []string
+		if proof != nil && observations[0].ServiceHealth != nil {
+			regionalConflict = r.serviceHealthRegionalConflict(observations)
+		}
 		selected, determined := 0, true
 		if len(observations) > 1 {
 			for i, e := range observations {
@@ -310,7 +365,8 @@ func (r *Run) rebuildOperationalCoverage() {
 			}
 			ids := []string{}
 			for i, e := range observations {
-				if !determined || i != selected {
+				_, decidingRegion := slices.BinarySearch(regionalConflict, e.ID)
+				if !determined || i != selected && !decidingRegion {
 					ids = append(ids, e.ID)
 				}
 			}
@@ -318,27 +374,234 @@ func (r *Run) rebuildOperationalCoverage() {
 			if !determined {
 				reason = "conflicting_operational_evidence"
 			}
-			r.Gaps = append(r.Gaps, Gap{Source: observations[0].Source, EntityID: observations[0].EntityID, Reason: reason, EvidenceIDs: ids})
+			if len(ids) > 0 {
+				r.Gaps = append(r.Gaps, Gap{Source: observations[0].Source, EntityID: observations[0].EntityID, Reason: reason, EvidenceIDs: ids})
+			}
 		}
 		if !determined {
+			if proof != nil {
+				r.classifyOperationalConflict(proof, key, observations, regionalConflict)
+			}
 			continue
 		}
 		e := observations[selected]
-		if e.Disposition != "active" {
+		finding := ""
+		if e.Disposition == "active" {
+			f := r.operationalFinding(key, e)
+			finding = f.ID
+			r.Findings = append(r.Findings, f)
+		}
+		if proof != nil {
+			proof.add(e.Source, e.ResourceID, []string{e.ID})
+			if len(regionalConflict) > 0 {
+				r.block(e.Source, canonicalFoldID(e.EntityID), "", conflictingServiceHealthRegionalState, regionalConflict, finding)
+			} else if reason := r.operationalBlocker(e); reason != "" {
+				r.blockTargets(e.Source, canonicalFoldID(e.EntityID), reason, []Evidence{e}, []string{e.ID}, finding)
+			}
+		}
+	}
+}
+
+type serviceHealthUpdate struct {
+	at          *time.Time
+	evidenceIDs []string
+}
+
+func (u *serviceHealthUpdate) observe(at *time.Time, id string) {
+	switch {
+	case at == nil || at.IsZero():
+		if u.at == nil {
+			u.evidenceIDs = append(u.evidenceIDs, id)
+		}
+	case u.at == nil || at.After(*u.at):
+		u.at, u.evidenceIDs = at, []string{id}
+	case at.Equal(*u.at):
+		u.evidenceIDs = append(u.evidenceIDs, id)
+	}
+}
+
+// Event headers and regional details may advance independently across pages.
+// A resolution must be strictly newer than the unresolved regional observation.
+func (r *Run) serviceHealthRegionalConflict(observations []Evidence) []string {
+	query := r.Sources["service_health"].Query
+	if query == nil || query.Cutoff == nil || query.ReferenceAt.IsZero() {
+		return nil
+	}
+	type serviceRegion struct{ service, region string }
+	var eventResolution serviceHealthUpdate
+	unresolved, resolved := make(map[serviceRegion]serviceHealthUpdate), make(map[serviceRegion]serviceHealthUpdate)
+	for _, e := range observations {
+		facts := e.ServiceHealth
+		if facts == nil || slices.Contains(e.Limitations, "unknown_category") {
 			continue
 		}
-		category, title := "monitor_alert", "Azure Monitor source condition Fired"
-		if e.ServiceHealth != nil {
-			facts := e.ServiceHealth
-			category, title = "service_health_"+facts.Category, "Service Health Active "+facts.Category+" notice"
-			if facts.Category == "ServiceIssue" {
-				title = "Service Health Active ServiceIssue"
-			}
-			query := r.Sources[e.Source].Query
-			if facts.ImpactStartTime != nil && query != nil && facts.ImpactStartTime.After(query.ReferenceAt) {
-				title = "Service Health future " + facts.Category + " notice"
+		if facts.Category != "ServiceIssue" && (facts.Category != "PlannedMaintenance" || r.futureServiceEvent(e)) {
+			continue
+		}
+		if facts.Status == "Resolved" && !slices.Contains(e.Limitations, "unknown_state") {
+			eventResolution.observe(e.ReportedAt, e.ID)
+		}
+		verifiedRegionLabels := !slices.Contains(e.Limitations, unverifiedServiceHealthRegionLabels)
+		verifiedRegionState := !slices.Contains(e.Limitations, "unknown_region_state")
+		observedAt := serviceHealthObservationTime(e, query.ReferenceAt)
+		for _, impact := range facts.Impact {
+			service := canonicalFoldID(impact.Service)
+			for _, region := range impact.Regions {
+				t := region.LastUpdateTime
+				dated := t != nil && !t.IsZero()
+				if dated && t.Before(*query.Cutoff) {
+					continue
+				}
+				var key serviceRegion
+				if verifiedRegionLabels {
+					key = serviceRegion{service, canonicalFoldID(region.Name)}
+				}
+				if region.Status == "Resolved" && verifiedRegionState {
+					if dated && region.Attribution == "selected_subscription" && key.service != "" && key.region != "" {
+						u := resolved[key]
+						u.observe(t, e.ID)
+						resolved[key] = u
+					}
+					continue
+				}
+				if !dated {
+					// An untimed state was still present at the saved read. Require
+					// resolution after that observation before clearing its uncertainty.
+					t = &observedAt
+				}
+				u := unresolved[key]
+				u.observe(t, e.ID)
+				unresolved[key] = u
 			}
 		}
-		r.Findings = append(r.Findings, Finding{ID: stableID("finding-", key), Source: e.Source, EntityID: e.EntityID, SubscriptionID: e.SubscriptionID, ResourceID: e.ResourceID, Category: category, Title: title, EvidenceIDs: []string{e.ID}})
+	}
+	if len(eventResolution.evidenceIDs) == 0 {
+		return nil
+	}
+	var ids []string
+	for key, update := range unresolved {
+		regionResolution := resolved[key]
+		if eventResolution.at != nil && eventResolution.at.After(*update.at) ||
+			regionResolution.at != nil && regionResolution.at.After(*update.at) {
+			continue
+		}
+		ids = append(ids, update.evidenceIDs...)
+		ids = append(ids, regionResolution.evidenceIDs...)
+	}
+	if len(ids) > 0 {
+		ids = append(ids, eventResolution.evidenceIDs...)
+	}
+	return sortedUnique(ids)
+}
+
+func (r *Run) operationalFinding(key string, e Evidence) Finding {
+	category, title := "monitor_alert", "Azure Monitor source condition Fired"
+	if e.ServiceHealth != nil {
+		facts := e.ServiceHealth
+		category, title = "service_health_"+facts.Category, "Service Health Active "+facts.Category+" notice"
+		if facts.Category == "ServiceIssue" {
+			title = "Service Health Active ServiceIssue"
+		}
+		if r.futureServiceEvent(e) {
+			title = "Service Health future " + facts.Category + " notice"
+		}
+	}
+	return Finding{ID: stableID("finding-", key), Source: e.Source, EntityID: e.EntityID, SubscriptionID: e.SubscriptionID, ResourceID: e.ResourceID, Category: category, Title: title, EvidenceIDs: []string{e.ID}}
+}
+
+func (r *Run) futureServiceEvent(e Evidence) bool {
+	q := r.Sources[e.Source].Query
+	start := e.ServiceHealth.ImpactStartTime
+	if start == nil || q == nil {
+		return false
+	}
+	asOf := q.ReferenceAt
+	if r.SchemaVersion >= AssessmentSchemaVersion {
+		asOf = serviceHealthObservationTime(e, asOf)
+	}
+	return start.After(asOf)
+}
+
+func serviceHealthObservationTime(e Evidence, asOf time.Time) time.Time {
+	if collected := e.LatestCollectionTime(); collected.After(asOf) {
+		asOf = collected
+	}
+	if e.ReportedAt != nil && e.ReportedAt.After(asOf) {
+		asOf = *e.ReportedAt
+	}
+	return asOf
+}
+
+func (r *Run) operationalBlocker(e Evidence) string {
+	switch e.Disposition {
+	case "inactive", "excluded":
+		return ""
+	case "unclassified":
+		return "unclassified_operational_evidence"
+	case "active":
+		if e.ServiceHealth != nil {
+			if r.futureServiceEvent(e) && e.ServiceHealth.Category != "ServiceIssue" {
+				return ""
+			}
+			return "service_health_impact_undetermined"
+		}
+		if e.ResourceID == "" {
+			return "unknown_resource_attribution"
+		}
+		for _, reason := range e.Limitations {
+			switch reason {
+			case "unknown_workflow_state", "unknown_severity":
+				continue
+			default:
+				return reason
+			}
+		}
+		if e.Monitor != nil && e.Monitor.Attribution == "reported_target" {
+			return ""
+		}
+	}
+	return "unclassified_operational_evidence"
+}
+
+func (r *Run) classifyOperationalConflict(proof *assessmentEvidence, key string, observations []Evidence, regionalConflict []string) {
+	current := latestCandidates(observations, func(e Evidence) *time.Time { return e.ReportedAt })
+	first := current[0]
+	target := first.ResourceID
+	var positives []Evidence
+	blocking := len(regionalConflict) > 0
+	for _, e := range current {
+		if !strings.EqualFold(e.ResourceID, target) {
+			target = ""
+		}
+		if e.Disposition == "active" {
+			positives = append(positives, e)
+		}
+		blocking = blocking || r.operationalBlocker(e) != ""
+	}
+	if !blocking && len(positives) == 0 {
+		return
+	}
+	agreedMonitorFinding := !blocking && first.Monitor != nil && target != "" && len(positives) == len(current)
+	finding := ""
+	if len(positives) > 0 {
+		f := r.operationalFinding(key, positives[0])
+		f.ResourceID, f.EvidenceIDs = target, evidenceRefs(positives)
+		if !agreedMonitorFinding {
+			f.Title += " in conflicting observations"
+		}
+		finding = f.ID
+		r.Findings = append(r.Findings, f)
+	}
+	if agreedMonitorFinding {
+		proof.add(first.Source, target, evidenceRefs(positives))
+		return
+	}
+	if !blocking && first.ServiceHealth != nil {
+		return
+	}
+	if len(regionalConflict) > 0 {
+		r.block(first.Source, canonicalFoldID(first.EntityID), "", conflictingServiceHealthRegionalState, regionalConflict, finding)
+	} else {
+		r.blockTargets(first.Source, canonicalFoldID(first.EntityID), "conflicting_operational_state_or_target", current, evidenceRefs(current), finding)
 	}
 }

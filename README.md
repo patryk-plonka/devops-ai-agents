@@ -6,8 +6,8 @@ is read-only and uses the operator's existing Azure CLI user login.
 The command collects inventory, Resource Health, Service Health events,
 existing Azure Monitor metric/log alert instances, and cached Azure Advisor
 recommendations in that order. Each source can fail independently while useful
-results remain in the report. Overall coverage stays incomplete and no resource
-is classified overall OK.
+results remain in the report. The headline shows coverage and counts of resources
+that are OK, have findings, or are unknown.
 
 S-01 was accepted on 2026-11-06; its historical outcomes and limits are in
 [the archived verification record](context/archive/2026-11-05-subscription-resource-health-report/verification.md).
@@ -70,9 +70,10 @@ source, repeated or unsafe continuations, cancellation, or a checkpoint failure.
 Schema-invalid records are rejected individually with an explicit count and gap;
 valid siblings on the page are retained. Invalid page envelopes fail the page.
 After finalizing `run.json`, the CLI atomically publishes `report.md` from that
-saved revision. Stdout contains only the published report path; stderr identifies
-the outcome, snapshot, source status, and incomplete overall coverage. Failed
-scope validation also produces a diagnostic report when storage is available.
+saved revision. Stdout contains only the published report path. Stderr identifies
+the outcome, coverage and resource counts, source status, artifact paths and
+revision. Failed scope validation also produces a diagnostic report when storage
+is available.
 Both artifacts carry the same run ID and revision. The two file replacements
 are separate operations: if rendering/publication fails, stdout stays empty,
 the command fails, and stderr identifies the retained checkpoint and whether
@@ -88,7 +89,16 @@ runs/                              # Git-ignored; private local output
     report.md                      # derived from the saved revision
 ```
 
-New runs use schema 3. The renderer supports existing schema-1 and schema-2 snapshots.
+New runs use schema 4. Existing schema-1 through schema-3 snapshots retain their
+original report format.
+
+**OK within the agreed checks** means the resource appeared in inventory, had a
+current Available Resource Health observation, and had sufficient evidence for
+the applicable Service Health, Azure Monitor and Azure Advisor checks within
+the saved query scopes and times. Complete coverage can include findings. A
+resource with a finding and a missing check counts as unknown and shows both.
+Subscription-level findings and findings outside inventory stay visible outside
+the resource counts.
 
 Service Health queries events updated in the last 30 days: a fixed UTC reference
 comes from the run start, with a cutoff exactly 30 × 24 hours earlier. The API
@@ -111,11 +121,12 @@ queried by a log rule. Missing or foreign targets remain unknown with an explici
 gap; unsafe target values are omitted. No rule, history, log-query or event-detail
 requests are made.
 
-The Service Health and Monitor sections show the configured query and evidence collection times.
+The report shows source queries and accepted-page times, including for empty lists.
 The saved `requested_at` timestamp marks query preparation before collection.
-Sequential pages do not form an atomic snapshot. Completed enumeration,
-known exclusions, unclassified evidence and rejected malformed records remain
-separate; successful empty lists do not establish OK.
+Sequential pages reflect different points in time. A fully read empty list can
+support the check within the stated query. For example, an empty Monitor list
+can establish that the query returned no applicable Fired instances in its
+window. It gives no information about rule configuration for an individual VM.
 
 Advisor reads the selected subscription's cached recommendation list without a
 date filter or cache refresh. The section shows the saved operation, API version,
@@ -124,8 +135,8 @@ the accepted list is empty. New recommendations appear first. Other statuses
 remain available in a second table. Each type group counts distinct instances
 and ranks by its highest reported impact. A row labeled **Resource unknown**
 has no validated assessed resource. **Last evaluated (UTC)** is the source's
-evaluation time. Advisor suggestions are review items and overall coverage stays
-incomplete even when all five collectors finish.
+evaluation time. New recommendations are review findings. Postponed
+recommendations appear beside the affected resource for context.
 
 The normalized record retains the requested scope and resolved subscription/tenant
 identifiers, with defined credential patterns redacted and terminal controls removed.
@@ -136,8 +147,10 @@ and raw SDK errors. Do not commit local run records or put real subscription dat
 in test fixtures. Credential-bearing URLs are filtered across URI schemes,
 including Redis and PostgreSQL connection URLs.
 
-Inspect `resources`, `evidence`, `observations`, `findings`, `advisor_instances`, and `coverage_gaps` in
-`run.json`. Findings reference stable evidence IDs with source/API version and
+Inspect `resource_assessments` and `assessment_summary` in `run.json`. Each
+assessment lists its deciding evidence IDs, check references such as
+`sources.azure_monitor`, and any missing or conflicting evidence. Findings
+reference stable evidence IDs with source/API version and
 collection/source timestamps. Exact duplicate observations collapse; conflicting
 states remain undetermined unless source timestamps identify a unique current
 state. Available is a Resource Health observation only.
@@ -156,9 +169,10 @@ observed inventory resources and evidence records remain enumerable, with sorted
 tags and links to the sibling `run.json`; untrusted strings render as literal
 text. Resource Health findings retain their source observations even if newer
 or conflicting evidence changes the current state. Operational active summaries
-use only determined source states: older, inactive, unclassified and conflicting
-observations stay in separate tables and the evidence index. Inspect timestamps
-and gaps before interpreting the evidence.
+preserve known active findings even when a conflict leaves applicability
+uncertain. Older, inactive, unclassified and conflicting observations stay
+traceable through their evidence. An incident with uncertain impact links
+affected assessments to one subscription entry.
 Open `report.md` beside `run.json`. Check their run ID/revision first, then find
 each finding's `ev-...` reference in the JSON `evidence` array. Use `resource_id`,
 `status_id` for Resource Health, `entity_id`/`subscription_id` for operational
@@ -169,14 +183,16 @@ to `run.json`, find that ID in `evidence`, and use its full `entity_id` and
 Align the category and workflow filters when comparing to the portal. The evidence
 index shows evaluation, state-change, and collection times for each observation.
 Keep the files together so sibling links work.
-For a current synthetic example, see
-[report.md](internal/report/testdata/advisor/report.md) and its
-sibling [run.json](internal/report/testdata/advisor/run.json).
+The schema-4 synthetic example shows an OK resource with Postponed context,
+a resource with a finding, and an unknown resource with a known alert.
+[Report](internal/report/testdata/assessment/report.md) ·
+[Snapshot](internal/report/testdata/assessment/run.json)
 The [fixture index](internal/report/testdata/README.md) links to the historical examples.
 
-The first Ctrl+C stops discovery/collection and finalizes a cancelled, incomplete
-report using local storage, retaining completed pages. Selection prompts also
-respond to interruption. No new Azure evidence is requested during finalization.
+The first Ctrl+C stops discovery, collection or report rendering and finalizes a
+cancelled, incomplete report using local storage, retaining completed pages.
+An interruption while delivering the path preserves the already published pair.
+Selection prompts also respond to interruption. Finalization uses saved evidence.
 A second Ctrl+C may force termination; the last committed `run.json` checkpoint
 is the recovery artifact. Forced termination or an unwritable filesystem can
 prevent the final report. S-01 was accepted on 2026-11-06 and S-02 on 2026-11-18.
@@ -186,11 +202,11 @@ Exit codes from the built binary:
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Help, or all five collectors completed and the report was saved with incomplete overall coverage |
-| 1 | Pre-collection authentication/scope-access failure, fatal execution/storage/publication failure, or all collectors failed without useful evidence or any completed collector |
+| 0 | Help, or all five collectors completed and the report path was delivered. Coverage can still be incomplete. |
+| 1 | Authentication or scope-access failure, fatal execution/storage/publication/output failure, or all collectors failed without useful evidence or any completed collector |
 | 2 | Invalid input, missing/ambiguous CLI-session subscription, unsupported cloud/account, or missing repository context |
 | 3 | At least one implemented collector partial/failed, with useful evidence or a completed collector retained (including collector-local authentication failures) |
-| 130 | Interrupted execution; cancelled/incomplete output is saved when finalization succeeds; any storage failure is also disclosed |
+| 130 | Interrupted execution. Finalization saves a cancelled, incomplete report when possible. If the interruption occurred during path delivery, the published pair is retained. |
 
 `go run` itself returns a wrapper error for nonzero application codes; use the built
 binary when inspecting exact exit codes.

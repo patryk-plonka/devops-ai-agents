@@ -283,7 +283,7 @@ func TestProductionDefaultsUseFiveNativeCollectors(t *testing.T) {
 	if !reflect.DeepEqual(sequence, []string{"inventory", "resource_health", "service_health", "azure_monitor", "advisor"}) {
 		t.Fatalf("wrong native order %v", sequence)
 	}
-	r := assertIntegrationArtifacts(t, a, out, diag)
+	r := assertIntegrationArtifacts(t, a, out, diag, "incomplete", "Incomplete coverage · ")
 	if len(r.Findings) != 3 || len(r.Evidence) != 3 || len(r.Observations) != 0 || len(r.AdvisorInstances) != 1 {
 		t.Fatal("operational evidence became resource faults or was lost")
 	}

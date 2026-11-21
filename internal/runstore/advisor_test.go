@@ -1,6 +1,7 @@
 package runstore
 
 import (
+	"context"
 	"encoding/json"
 	"html"
 	"os"
@@ -68,7 +69,7 @@ func TestAdvisorPublicationUsesCommittedPageTimes(t *testing.T) {
 				t.Fatal(err)
 			}
 			r.Sources["advisor"] = health.Source{}
-			if err := s.PublishReport(report.Markdown); err != nil {
+			if err := s.PublishReport(context.Background(), report.Markdown); err != nil {
 				t.Fatal(err)
 			}
 			b, err := os.ReadFile(s.ReportPath())

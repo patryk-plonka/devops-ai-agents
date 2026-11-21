@@ -210,11 +210,15 @@ func TestCancelledBeforeCollectionReportsOnlyConfiguredQuery(t *testing.T) {
 				t.Fatal(err)
 			}
 			text := html.UnescapeString(string(b))
+			title := "## Service Health\n"
 			want := "Configured API queryStartTime: 10/16/2026"
 			if source == "azure_monitor" {
+				title = "## Azure Monitor\n"
 				want = "Configured API timeRange: 30d"
 			}
-			if !strings.Contains(text, "Collection did not start.") || !strings.Contains(text, want) || strings.Contains(text, "Query prepared (UTC)") || strings.Contains(text, "first requested") {
+			_, section, _ := strings.Cut(text, title)
+			section, _, _ = strings.Cut(section, "\n## ")
+			if !strings.Contains(section, "Collection did not start.") || !strings.Contains(section, want) || strings.Contains(section, "Query prepared (UTC)") || strings.Contains(section, "first requested") {
 				t.Fatal("report did not distinguish configured policy from collection")
 			}
 		})
@@ -249,7 +253,7 @@ func TestSyntheticOperationalReportExample(t *testing.T) {
 }
 
 func TestReportExampleLinksResolveToMatchingSnapshot(t *testing.T) {
-	for _, reportPath := range []string{"testdata/mixed-report.md", "testdata/operational/report.md", "testdata/advisor/report.md"} {
+	for _, reportPath := range []string{"testdata/mixed-report.md", "testdata/operational/report.md", "testdata/advisor/report.md", "testdata/assessment/report.md"} {
 		t.Run(reportPath, func(t *testing.T) {
 			b, err := os.ReadFile(reportPath)
 			if err != nil {
@@ -271,7 +275,7 @@ func TestReportExampleLinksResolveToMatchingSnapshot(t *testing.T) {
 			}
 			snapshots := map[string]health.Run{}
 			for _, link := range links {
-				label, target := link[1], link[2]
+				label, target := html.UnescapeString(link[1]), link[2]
 				if target != "run.json" {
 					t.Fatalf("unexpected example link target %q", target)
 				}
@@ -291,6 +295,18 @@ func TestReportExampleLinksResolveToMatchingSnapshot(t *testing.T) {
 					t.Fatalf("link opens %s revision %d; report identifies %s revision %d", saved.ID, saved.Revision, identity[1], revisionNumber)
 				}
 				if label == "run.json" {
+					continue
+				}
+				if name, ok := strings.CutPrefix(label, "sources."); ok {
+					if _, exists := saved.Sources[name]; !exists {
+						t.Fatalf("check link %s does not resolve in matching snapshot", label)
+					}
+					continue
+				}
+				if strings.HasPrefix(label, "finding-") {
+					if !slices.ContainsFunc(saved.Findings, func(f health.Finding) bool { return f.ID == label }) {
+						t.Fatalf("finding link %s does not resolve in matching snapshot", label)
+					}
 					continue
 				}
 				found := false

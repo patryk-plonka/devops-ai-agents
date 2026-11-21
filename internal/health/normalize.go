@@ -15,7 +15,7 @@ import (
 var subscriptionUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // ResourceID validates a scoped ARM resource ID, including nested and extension
-// resources. Keep source spelling; use CanonicalID for case-insensitive joins.
+// resources. Keep source spelling in the evidence.
 func ResourceID(id, subscription string) bool {
 	parts := scopedARMPath(id, subscription)
 	if len(parts) < 7 {
@@ -72,6 +72,29 @@ func scopedARMPath(id, subscription string) []string {
 }
 func CanonicalID(id string) string { return strings.ToLower(id) }
 
+// canonicalFoldID uses the same equivalence classes as strings.EqualFold.
+// Keep lowercase spellings where they belong to that same class.
+func canonicalFoldID(id string) string {
+	return strings.Map(func(r rune) rune {
+		if r <= unicode.MaxASCII {
+			return unicode.ToLower(r)
+		}
+		first := simpleFoldRepresentative(r)
+		lower := unicode.ToLower(first)
+		if strings.EqualFold(string(first), string(lower)) {
+			return lower
+		}
+		return first
+	}, id)
+}
+
+func (r *Run) identityKey(id string) string {
+	if r.SchemaVersion >= AssessmentSchemaVersion {
+		return canonicalFoldID(id)
+	}
+	return CanonicalID(id)
+}
+
 func statusResourceID(id, subscription string) (string, bool) {
 	// Only the documented final ResourceHealth extension can establish attribution.
 	parts := strings.Split(id, "/")
@@ -103,22 +126,34 @@ func stableID(prefix string, v any) string {
 	return prefix + hex.EncodeToString(sum[:])
 }
 func (r *Run) addEvidence(e Evidence) {
-	// Collection time is intentionally excluded from identity: exact observations
-	// repeated on another page collapse, keeping their first collection time.
+	// Collection times are excluded from identity so repeated observations share an ID.
 	identity := e
 	identity.ID = ""
 	identity.CollectedAt = time.Time{}
-	canonical := CanonicalID
-	if e.Source == advisorSource {
-		canonical = canonicalAdvisorID
+	identity.LastCollectedAt = nil
+	identity.ResourceID = r.identityKey(identity.ResourceID)
+	identity.StatusID = r.identityKey(identity.StatusID)
+	identity.EntityID = r.identityKey(identity.EntityID)
+	if r.SchemaVersion >= AssessmentSchemaVersion && identity.Resource != nil {
+		facts := *identity.Resource
+		facts.ID = canonicalFoldID(facts.ID)
+		facts.ResourceGroup = canonicalFoldID(facts.ResourceGroup)
+		identity.Resource = &facts
 	}
-	identity.ResourceID = canonical(identity.ResourceID)
-	identity.StatusID = CanonicalID(identity.StatusID)
-	identity.EntityID = canonical(identity.EntityID)
+	if e.Source == advisorSource {
+		identity.EntityID = canonicalAdvisorID(e.EntityID)
+		if r.SchemaVersion < AssessmentSchemaVersion {
+			identity.ResourceID = canonicalAdvisorID(e.ResourceID)
+		}
+	}
 	identity.SubscriptionID = CanonicalID(identity.SubscriptionID)
 	e.ID = stableID("ev-", identity)
-	for _, prior := range r.Evidence {
+	for i := range r.Evidence {
+		prior := &r.Evidence[i]
 		if prior.ID == e.ID {
+			if r.SchemaVersion >= AssessmentSchemaVersion && e.Source == "service_health" && e.CollectedAt.After(prior.LatestCollectionTime()) {
+				prior.LastCollectedAt = &e.CollectedAt
+			}
 			return
 		}
 	}
@@ -126,7 +161,8 @@ func (r *Run) addEvidence(e Evidence) {
 }
 
 // NormalizePage must run before Save, including for pages with mixed valid and
-// invalid records. Rejected records leave only a fixed diagnostic, no payload.
+// invalid records. Rejected records leave a count and any independently
+// verified scope, without retaining the rejected payload.
 func (r *Run) NormalizePage(source string, page Page) {
 	subscription := r.Scope.SubscriptionID
 	collected := page.CollectedAt.UTC()
@@ -134,6 +170,13 @@ func (r *Run) NormalizePage(source string, page Page) {
 		collected = time.Now().UTC()
 	}
 	invalid, unclassified := 0, 0
+	var rejectedScopes []RejectedRecordInput
+	reject := func(input RejectedRecordInput) {
+		invalid++
+		if input.ID != "" {
+			rejectedScopes = append(rejectedScopes, input)
+		}
+	}
 	text := func(s string) string { v, n := SafeText(s); r.Redactions += n; return v }
 	switch source {
 	case "inventory":
@@ -150,13 +193,19 @@ func (r *Run) NormalizePage(source string, page Page) {
 				rg = parts[4]
 			}
 			facts := ResourceFacts{ID: input.ID, Name: text(input.Name), Type: text(input.Type), Location: text(input.Location), ResourceGroup: rg, Tags: tags}
-			r.addEvidence(Evidence{Source: source, Operation: "Resources.List", APIVersion: InventoryAPI, ResourceID: input.ID, Kind: "inventory", CollectedAt: collected, Resource: &facts})
+			r.addEvidence(Evidence{Source: source, Operation: inventoryOperation, APIVersion: InventoryAPI, ResourceID: input.ID, Kind: "inventory", CollectedAt: collected, Resource: &facts})
 		}
 	case "resource_health":
 		for _, input := range page.Health {
 			id, valid := statusResourceID(input.StatusID, subscription)
 			if !valid {
 				invalid++
+				continue
+			}
+			reported, reportedValid := sourceTime(input.ReportedAt)
+			occurred, occurredValid := sourceTime(input.OccurredAt)
+			if !reportedValid || !occurredValid {
+				reject(RejectedRecordInput{ID: input.StatusID})
 				continue
 			}
 			state, kind := "undetermined", "undetermined"
@@ -176,17 +225,12 @@ func (r *Run) NormalizePage(source string, page Page) {
 			if state == "undetermined" && (input.EventPresent || eventID != "" || len(events) > 0) {
 				kind = "event"
 			}
-			var reported *time.Time
-			if input.ReportedAt != nil {
-				t := input.ReportedAt.UTC()
-				reported = &t
-			}
 			statusName, _ := url.PathUnescape(input.StatusID[strings.LastIndex(input.StatusID, "/")+1:])
 			role := "historical"
 			if strings.EqualFold(statusName, "current") {
 				role = "current"
 			}
-			r.addEvidence(Evidence{Source: source, StatusRole: role, Operation: "AvailabilityStatuses.ListBySubscriptionId", APIVersion: ResourceHealthAPI, ResourceID: id, StatusID: input.StatusID, State: state, Kind: kind, EventID: eventID, EventIDs: events, CollectedAt: collected, ReportedAt: reported, OccurredAt: utcTime(input.OccurredAt)})
+			r.addEvidence(Evidence{Source: source, StatusRole: role, Operation: resourceHealthOperation, APIVersion: ResourceHealthAPI, ResourceID: id, StatusID: input.StatusID, State: state, Kind: kind, EventID: eventID, EventIDs: events, CollectedAt: collected, ReportedAt: reported, OccurredAt: occurred})
 		}
 	case "service_health":
 		for _, input := range page.ServiceHealth {
@@ -201,7 +245,7 @@ func (r *Run) NormalizePage(source string, page Page) {
 			if e, valid := r.monitorEvidence(input, collected); valid {
 				r.addOperational(e)
 			} else {
-				invalid++
+				reject(RejectedRecordInput{ID: input.ID, TargetResourceID: input.TargetResourceID})
 			}
 		}
 	case advisorSource:
@@ -212,13 +256,15 @@ func (r *Run) NormalizePage(source string, page Page) {
 				}
 				r.addEvidence(e)
 			} else {
-				invalid++
+				reject(RejectedRecordInput{ID: input.ID, TargetResourceID: input.TargetResourceID})
 			}
 		}
 	}
 	s := r.Sources[source]
 	if source == advisorSource {
 		s.UnclassifiedRecords += unclassified
+	}
+	if source == advisorSource || r.SchemaVersion >= AssessmentSchemaVersion {
 		if s.FirstPageAt == nil {
 			s.FirstPageAt = &collected
 		}
@@ -228,6 +274,18 @@ func (r *Run) NormalizePage(source string, page Page) {
 	if invalid > 0 {
 		s.Reason = "invalid_records"
 		s.RejectedRecords += invalid
+		if r.SchemaVersion >= AssessmentSchemaVersion {
+			// Transport hints accompany placeholders and cannot also describe
+			// rows rejected here after decoding.
+			if len(page.RejectedScopes) <= invalid-len(rejectedScopes) {
+				rejectedScopes = append(rejectedScopes, page.RejectedScopes...)
+			}
+			for _, input := range rejectedScopes {
+				if scope, ok := scopedRejection(source, subscription, input); ok {
+					s.RejectedScopes = append(s.RejectedScopes, scope)
+				}
+			}
+		}
 	}
 	r.Sources[source] = s
 	r.RebuildCoverage()
@@ -242,52 +300,92 @@ func compact(values []string) []string {
 	return result
 }
 
-// RebuildCoverage derives all views from saved normalized evidence. No field
-// expresses overall OK; source Available and execution success remain separate.
+// RebuildCoverage derives findings, coverage and assessments from saved evidence.
 func (r *Run) RebuildCoverage() {
 	r.Coverage = "incomplete"
 	r.Resources = []Resource{}
 	r.Observations = []Observation{}
 	r.Findings = []Finding{}
 	r.Gaps = []Gap{}
+	var proof *assessmentEvidence
+	if r.SchemaVersion >= AssessmentSchemaVersion {
+		proof = &assessmentEvidence{bySource: make(map[string]map[string][]string), postponed: make(map[string][]string)}
+	}
 	resourceIndex := map[string]int{}
+	inventoryConflicts := map[string]bool{}
+	inventoryRepresentative := map[string]string{}
 	healthByResource := map[string][]Evidence{}
 	gap := func(source, id, reason string, evidence []string) {
-		r.Gaps = append(r.Gaps, Gap{Source: source, ResourceID: id, Reason: reason, EvidenceIDs: evidence})
+		r.Gaps = append(r.Gaps, Gap{Source: source, ResourceID: id, Reason: reason, EvidenceIDs: evidence, Blocking: proof != nil})
 	}
-	for _, source := range []string{"inventory", "resource_health", "advisor", "service_health", "azure_monitor"} {
+	for _, source := range assessmentSources {
 		s := r.Sources[source]
-		if s.RejectedRecords > 0 && (s.Reason != "invalid_records" || s.Status == "completed") {
+		unscopedRejections, sourceUnfinished := s.RejectedRecords, s.Status != "completed"
+		if proof != nil {
+			unscopedRejections -= len(s.RejectedScopes)
+			sourceUnfinished = sourceUnfinished && !s.finishedWithRejections()
+			r.rebuildRejectionGaps(source, s.RejectedScopes)
+		}
+		if unscopedRejections > 0 && (s.Reason != "invalid_records" || !sourceUnfinished) {
 			gap(source, "", "invalid_records", nil)
 		}
-		if s.Status != "completed" {
+		if sourceUnfinished {
 			reason := s.Reason
 			if reason == "" {
 				reason = s.Status
 			}
+			if reason == "" {
+				reason = "missing_source_status"
+			}
 			gap(source, "", reason, nil)
 		}
 	}
+	if proof != nil {
+		r.sourceDecisionGaps()
+	}
 	for _, e := range r.Evidence {
-		key := CanonicalID(e.ResourceID)
+		key := r.identityKey(e.ResourceID)
 		if e.Source == "inventory" && e.Resource != nil {
 			i, found := resourceIndex[key]
 			if !found {
 				resourceIndex[key] = len(r.Resources)
 				r.Resources = append(r.Resources, Resource{ResourceFacts: *e.Resource, EvidenceIDs: []string{e.ID}})
+				if proof != nil {
+					inventoryRepresentative[key] = e.ID
+				}
 			} else {
-				r.Resources[i].EvidenceIDs = append(r.Resources[i].EvidenceIDs, e.ID)
-				gap("inventory", e.ResourceID, "conflicting_inventory", r.Resources[i].EvidenceIDs)
+				resource := &r.Resources[i]
+				if proof != nil {
+					inventoryConflicts[key] = inventoryConflicts[key] || !sameInventoryFacts(resource.ResourceFacts, *e.Resource)
+					if e.ID < inventoryRepresentative[key] {
+						resource.ResourceFacts = *e.Resource
+						inventoryRepresentative[key] = e.ID
+					}
+				}
+				resource.EvidenceIDs = append(resource.EvidenceIDs, e.ID)
+				if proof == nil {
+					gap("inventory", e.ResourceID, "conflicting_inventory", resource.EvidenceIDs)
+				}
 			}
 		} else if e.Source == "resource_health" {
 			healthByResource[key] = append(healthByResource[key], e)
 		}
 	}
-	if r.Sources["inventory"].Status != "completed" {
+	if proof == nil && r.Sources["inventory"].Status != "completed" {
 		gap("inventory", "", "inventory_unverified", nil)
 	}
-	for _, resource := range r.Resources {
-		if len(healthByResource[CanonicalID(resource.ID)]) == 0 {
+	for i := range r.Resources {
+		resource := &r.Resources[i]
+		key := r.identityKey(resource.ID)
+		if proof != nil {
+			// Keep derived identities stable and retain source spelling in evidence.
+			resource.ID = key
+			sort.Strings(resource.EvidenceIDs)
+			if inventoryConflicts[key] {
+				gap("inventory", resource.ID, "conflicting_inventory", resource.EvidenceIDs)
+			}
+		}
+		if len(healthByResource[key]) == 0 {
 			reason := "missing_health_evidence"
 			if r.Sources["resource_health"].Status != "completed" {
 				reason = "health_not_checked"
@@ -297,68 +395,62 @@ func (r *Run) RebuildCoverage() {
 		}
 	}
 	for key, evidence := range healthByResource {
+		id := evidence[0].ResourceID
+		index, inInventory := resourceIndex[key]
+		if proof != nil {
+			if inInventory {
+				id = r.Resources[index].ID
+			} else {
+				for _, e := range evidence {
+					id = min(id, e.ResourceID)
+				}
+			}
+		}
 		ids := make([]string, 0, len(evidence))
-		states := map[string]bool{}
 		current := make([]Evidence, 0, len(evidence))
-		currentIDs, historicalIDs := []string{}, []string{}
+		var historicalIDs []string
 		for _, e := range evidence {
 			ids = append(ids, e.ID)
 			if e.StatusRole == "current" {
 				current = append(current, e)
-				currentIDs = append(currentIDs, e.ID)
-				states[e.State] = true
 			} else {
 				historicalIDs = append(historicalIDs, e.ID)
 			}
 		}
-		sort.Strings(currentIDs)
 		sort.Strings(historicalIDs)
+		sort.Strings(ids)
 		if len(historicalIDs) > 0 {
-			gap("resource_health", evidence[0].ResourceID, "historical_health_evidence", historicalIDs)
+			r.Gaps = append(r.Gaps, Gap{Source: "resource_health", ResourceID: id, Reason: "historical_health_evidence", EvidenceIDs: historicalIDs})
 		}
 		if len(current) == 0 {
-			gap("resource_health", evidence[0].ResourceID, "missing_current_health_evidence", ids)
+			gap("resource_health", id, "missing_current_health_evidence", ids)
 		}
-		sort.Strings(ids)
-		state := "undetermined"
-		if len(current) > 0 {
-			state = current[0].State
+		state, deciding := decideResourceHealth(current, r.SchemaVersion)
+		if len(current) > 0 && len(deciding) == 0 {
+			gap("resource_health", id, "conflicting_health_evidence", evidenceRefs(current))
 		}
-		if len(states) > 1 {
-			state = "undetermined"
-			// A unique latest timestamp resolves current state only when every competing
-			// observation has a source timestamp and no latest states conflict.
-			var latest *time.Time
-			latestState := ""
-			allTimed, tied := true, false
-			for _, e := range current {
-				if e.ReportedAt == nil {
-					allTimed = false
-					break
-				}
-				if latest == nil || e.ReportedAt.After(*latest) {
-					latest, latestState, tied = e.ReportedAt, e.State, false
-				} else if e.ReportedAt.Equal(*latest) && e.State != latestState {
-					tied = true
-				}
-			}
-			if allTimed && !tied {
-				state = latestState
-			} else {
-				gap("resource_health", evidence[0].ResourceID, "conflicting_health_evidence", currentIDs)
-			}
-		}
-		_, inInventory := resourceIndex[key]
-		id := evidence[0].ResourceID
 		r.Observations = append(r.Observations, Observation{ResourceID: id, State: state, InInventory: inInventory, EvidenceIDs: ids})
+		if proof != nil {
+			proof.add("resource_health", id, deciding)
+		}
 		if !inInventory {
 			gap("inventory", id, "health_resource_absent_from_inventory", ids)
 		}
-		if state == "Unknown" {
-			gap("resource_health", id, "source_unknown", ids)
-		}
-		if state == "undetermined" {
-			gap("resource_health", id, "undetermined_health_evidence", ids)
+		switch state {
+		case "Available", "Degraded", "Unavailable":
+		case "Unknown":
+			if proof == nil {
+				gap("resource_health", id, "source_unknown", ids)
+			} else {
+				gap("resource_health", id, "source_unknown", deciding)
+			}
+		default:
+			switch {
+			case proof == nil && state == "undetermined":
+				gap("resource_health", id, "undetermined_health_evidence", ids)
+			case proof != nil && len(deciding) > 0:
+				gap("resource_health", id, "undetermined_health_evidence", deciding)
+			}
 		}
 		for _, e := range current {
 			category, title := "", ""
@@ -374,29 +466,84 @@ func (r *Run) RebuildCoverage() {
 			}
 		}
 	}
-	r.rebuildOperationalCoverage()
-	r.rebuildAdvisorCoverage()
-	if len(r.Resources) == 0 && len(healthByResource) == 0 && r.Sources["inventory"].Status == "completed" && r.Sources["resource_health"].Status == "completed" {
+	r.rebuildOperationalCoverage(proof)
+	r.rebuildAdvisorCoverage(proof)
+	legacyEmpty := len(healthByResource) == 0 && r.Sources["resource_health"].Status == "completed"
+	if len(r.Resources) == 0 && r.Sources["inventory"].Status == "completed" && (proof != nil || legacyEmpty) {
 		gap("inventory", "", "no_resources_observed", nil)
 	}
-	sort.Slice(r.Resources, func(i, j int) bool { return CanonicalID(r.Resources[i].ID) < CanonicalID(r.Resources[j].ID) })
+	sort.Slice(r.Resources, func(i, j int) bool { return r.identityKey(r.Resources[i].ID) < r.identityKey(r.Resources[j].ID) })
 	sort.Slice(r.Observations, func(i, j int) bool {
-		return CanonicalID(r.Observations[i].ResourceID) < CanonicalID(r.Observations[j].ResourceID)
+		return r.identityKey(r.Observations[i].ResourceID) < r.identityKey(r.Observations[j].ResourceID)
 	})
 	sort.Slice(r.Findings, func(i, j int) bool {
 		a, b := r.Findings[i], r.Findings[j]
 		return a.Category+a.ResourceID+a.ID < b.Category+b.ResourceID+b.ID
 	})
-	sort.Slice(r.Gaps, func(i, j int) bool {
+	if proof != nil {
+		r.rebuildAssessments(proof, resourceIndex)
+	} else {
+		r.sortGaps()
+	}
+}
+
+// decideResourceHealth selects deciding records from the current status versions.
+// When states disagree, every version needs a source time and the newest must agree.
+func decideResourceHealth(current []Evidence, schemaVersion int) (string, []string) {
+	if len(current) == 0 {
+		return "undetermined", nil
+	}
+	state := current[0].State
+	agree := true
+	for _, e := range current[1:] {
+		if e.State != state {
+			agree = false
+			break
+		}
+	}
+	if agree {
+		return state, evidenceRefs(current)
+	}
+	var latest *time.Time
+	tied := false
+	for _, e := range current {
+		if e.ReportedAt == nil || schemaVersion >= AssessmentSchemaVersion && e.ReportedAt.IsZero() {
+			return "undetermined", nil
+		}
+		if latest == nil || e.ReportedAt.After(*latest) {
+			latest, state, tied = e.ReportedAt, e.State, false
+		} else if e.ReportedAt.Equal(*latest) && e.State != state {
+			tied = true
+		}
+	}
+	if tied {
+		return "undetermined", nil
+	}
+	var deciding []string
+	for _, e := range current {
+		if e.ReportedAt.Equal(*latest) {
+			deciding = append(deciding, e.ID)
+		}
+	}
+	sort.Strings(deciding)
+	return state, deciding
+}
+
+func (r *Run) sortGaps() {
+	sort.SliceStable(r.Gaps, func(i, j int) bool {
 		a, b := r.Gaps[i], r.Gaps[j]
 		return a.Source+"\x00"+a.ResourceID+"\x00"+a.EntityID+"\x00"+a.Reason+"\x00"+strings.Join(a.EvidenceIDs, ",") < b.Source+"\x00"+b.ResourceID+"\x00"+b.EntityID+"\x00"+b.Reason+"\x00"+strings.Join(b.EvidenceIDs, ",")
 	})
 }
 
-func utcTime(value *time.Time) *time.Time {
+func sourceTime(value *time.Time) (*time.Time, bool) {
 	if value == nil {
-		return nil
+		return nil, true
 	}
-	t := value.UTC()
-	return &t
+	utc := value.UTC()
+	// An offset can move a parsed timestamp outside JSON's four-digit year range.
+	if year := utc.Year(); year < 0 || year > 9999 {
+		return nil, false
+	}
+	return &utc, true
 }

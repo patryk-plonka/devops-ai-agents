@@ -23,6 +23,7 @@ var advisorStart = time.Date(2026, 11, 18, 8, 0, 0, 0, time.UTC)
 
 func advisorReportRun() health.Run {
 	r := health.NewRun("Synthetic subscription", "test")
+	r.SchemaVersion = 3
 	r.ID, r.Revision = "synthetic-advisor-run", 18
 	r.StartedAt = advisorStart
 	r.UpdatedAt = advisorStart.Add(10 * time.Minute)

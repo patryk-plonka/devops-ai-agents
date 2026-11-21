@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"syscall"
 
 	"github.com/patryk-plonka/devops-ai-agents/internal/cli"
 	"golang.org/x/term"
@@ -25,13 +26,15 @@ func run() int {
 }
 
 func runApp(app cli.App, args []string) int {
+	// Let stdout writes report EPIPE so the CLI can report the saved path.
+	signal.Ignore(syscall.SIGPIPE)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	interrupts := make(chan os.Signal, 1)
 	signal.Notify(interrupts, os.Interrupt)
 	defer signal.Stop(interrupts)
 	// Restore normal signal behavior after the first interrupt, so a second one
-	// can terminate blocked finalization. Local Save/Publish do not use ctx.
+	// can terminate blocked finalization.
 	done := make(chan struct{})
 	defer close(done)
 	go func() {

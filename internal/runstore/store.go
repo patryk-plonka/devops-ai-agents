@@ -2,6 +2,7 @@
 package runstore
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -68,7 +69,10 @@ func (s *Store) ReportExists() (bool, error) {
 // PublishReport renders only the committed snapshot. Snapshot and report renames
 // are separate operations; a failed publication leaves any older report intact.
 // The caller serializes Save and PublishReport for this single-run store.
-func (s *Store) PublishReport(render func(health.Run) ([]byte, error)) error {
+func (s *Store) PublishReport(ctx context.Context, render func(health.Run) ([]byte, error)) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	b, err := s.root.ReadFile("run.json")
 	if err != nil {
 		return err
@@ -84,7 +88,7 @@ func (s *Store) PublishReport(render func(health.Run) ([]byte, error)) error {
 	if err != nil {
 		return err
 	}
-	return s.replace("report.md", b)
+	return s.replace(ctx, "report.md", b)
 }
 
 func New(repository string, run *health.Run) (*Store, error) {
@@ -142,7 +146,7 @@ func (s *Store) Save(run *health.Run) error {
 		return err
 	}
 	b = append(b, '\n')
-	if err := s.replace("run.json", b); err != nil {
+	if err := s.replace(context.Background(), "run.json", b); err != nil {
 		return err
 	}
 	*run = next
@@ -150,7 +154,7 @@ func (s *Store) Save(run *health.Run) error {
 	return nil
 }
 
-func (s *Store) replace(target string, b []byte) error {
+func (s *Store) replace(ctx context.Context, target string, b []byte) error {
 	name := ".write-" + randomID() + ".tmp"
 	f, err := s.root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
@@ -164,6 +168,9 @@ func (s *Store) replace(target string, b []byte) error {
 	}
 	if closeErr != nil {
 		return closeErr
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	return s.root.Rename(name, target)
 }

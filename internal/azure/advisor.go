@@ -77,8 +77,8 @@ func (c Collection) Advisor(ctx context.Context, subscription string, emit func(
 		},
 		Tracer: client.Tracer(),
 	})
-	return pages(ctx, c, subscription, advisorRoute, initial, pager, func(response advisorPage) (*string, error) {
-		page := health.Page{CollectedAt: time.Now().UTC()}
+	return pages(ctx, c, subscription, advisorRoute, initial, pager, func(response advisorPage, rejected []health.RejectedRecordInput) (*string, error) {
+		page := health.Page{CollectedAt: time.Now().UTC(), RejectedScopes: rejected}
 		for _, recommendation := range response.Value {
 			var input health.AdvisorInput
 			if recommendation != nil {
