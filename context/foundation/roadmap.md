@@ -3,7 +3,7 @@ project: "AI Agents for Devops"
 version: 1
 status: draft
 created: 2026-11-02
-updated: 2026-11-21
+updated: 2026-11-23
 prd_version: 1
 main_goal: quality
 top_blocker: none
@@ -37,7 +37,7 @@ The user confirmed no known blocker after stack selection and bootstrap. Confirm
 | S-02 | active-alert-report | Consultant can see relevant Service Health events and existing Azure Monitor metric/log alerts in the subscription report. | S-01 | US-01, FR-002, FR-003, FR-004 | done |
 | S-03 | advisor-recommendation-report | Consultant can review existing Azure Advisor recommendations and supporting evidence in the subscription report. | S-01 | US-01, FR-002, FR-003, FR-004 | done |
 | S-04 | complete-health-report | Consultant can run one check and review a consolidated Markdown report of active alerts, existing recommendations, evidence-backed OK resources, and explicit coverage gaps. | S-02, S-03 | US-01, FR-002, FR-003, FR-004 | done |
-| S-05 | selected-finding-drafts | Consultant can select findings from the reviewed report and generate ticket or recommendation drafts for manual submission. | S-04 | US-01, FR-004, FR-005 | proposed |
+| S-05 | selected-finding-drafts | Consultant can select findings from the reviewed report and generate ticket or recommendation drafts for manual submission. | S-04 | US-01, FR-004, FR-005 | done |
 
 The report slices incrementally advance FR-002–FR-004; their repeated references do not mean each early report satisfies the complete four-source requirement. FR-001 is delivered through S-01, the complete report requirements through S-04, and selected drafting through S-05.
 
@@ -130,7 +130,7 @@ Combine all four sources in one run and apply the PRD's complete-applicable-cove
 - **Blockers:** —
 - **Unknowns:** —
 - **Risk:** Draft generation could change or exceed the consultant's selection; preserve selected-finding identity through the output.
-- **Status:** proposed
+- **Status:** done
 
 Carry the selected findings' evidence and relevant coverage limitations into the drafts while excluding secrets and unnecessary sensitive details. Generate no drafts for unselected findings and make the selected source findings identifiable. Keep external submission under the consultant's control. Validate selection and traceability using reports from the completed four-source flow.
 
@@ -172,3 +172,5 @@ The PRD contains no open product questions.
 - **S-03: Consultant can review existing Azure Advisor recommendations and supporting evidence in the subscription report.** — Archived 2026-11-19 → `context/archive/2026-11-18-advisor-recommendation-report/`. Lesson: —.
 
 - **S-04: Consultant can run one check and review a consolidated Markdown report of active alerts, existing recommendations, evidence-backed OK resources, and explicit coverage gaps.** — Archived 2026-11-21 → `context/archive/2026-11-19-complete-health-report/`. Lesson: —.
+
+- **S-05: Consultant can select findings from the reviewed report and generate ticket or recommendation drafts for manual submission.** — Archived 2026-11-23 → `context/archive/2026-11-22-selected-finding-drafts/`. Lesson: —.
