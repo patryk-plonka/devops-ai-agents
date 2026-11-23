@@ -206,24 +206,24 @@ The plan adds a local command and files under the existing ignored run directory
 
 #### Automated
 
-- [x] 1.1 Verify published schema 4 pairs, stale and checkpoint-only failures, real-format run IDs and confined reads with `go test -count=1 ./internal/runstore ./internal/report`.
-- [x] 1.2 Verify exact selection, duplicates, unsupported references, historical evidence and known findings with missing proof using `go test -count=1 ./internal/health`.
+- [x] 1.1 Verify published schema 4 pairs, stale and checkpoint-only failures, real-format run IDs and confined reads with `go test -count=1 ./internal/runstore ./internal/report`. — dcf5292
+- [x] 1.2 Verify exact selection, duplicates, unsupported references, historical evidence and known findings with missing proof using `go test -count=1 ./internal/health`. — dcf5292
 
 ### Phase 2: Render and save the drafts
 
 #### Automated
 
-- [x] 2.1 Verify both Markdown formats, four-source wording, trace IDs, uncertainty and identifier filtering with `go test -count=1 ./internal/report`.
-- [x] 2.2 Verify private publication, mixed new and edited files, concurrent same-destination requests and failure recovery with `go test -race -count=1 ./internal/runstore`.
-- [x] 2.3 Verify CLI selection, offline dispatch, paths, reuse diagnostics and exit behavior with `go test -count=1 ./internal/cli ./cmd/devops-ai-agents`.
+- [x] 2.1 Verify both Markdown formats, four-source wording, trace IDs, uncertainty and identifier filtering with `go test -count=1 ./internal/report`. — dcf5292
+- [x] 2.2 Verify private publication, mixed new and edited files, concurrent same-destination requests and failure recovery with `go test -race -count=1 ./internal/runstore`. — dcf5292
+- [x] 2.3 Verify CLI selection, offline dispatch, paths, reuse diagnostics and exit behavior with `go test -count=1 ./internal/cli ./cmd/devops-ai-agents`. — dcf5292
 
 ### Phase 3: Verify the workflow and obtain operator acceptance
 
 #### Automated
 
-- [x] 3.1 Verify report-to-draft selection, immutable source artifacts and ignored outputs through the normal CLI using `go test -count=1 ./internal/cli`.
-- [x] 3.2 Pass every repository validation command listed under Testing strategy with real packages included in the test and vulnerability audit.
+- [x] 3.1 Verify report-to-draft selection, immutable source artifacts and ignored outputs through the normal CLI using `go test -count=1 ./internal/cli`. — dcf5292
+- [x] 3.2 Pass every repository validation command listed under Testing strategy with real packages included in the test and vulnerability audit. — dcf5292
 
 #### Manual
 
-- [x] 3.3 Review one real saved finding as a client-facing draft, trace it to the reviewed revision, and record the operator’s explicit acceptance and fixture-only scenarios.
+- [x] 3.3 Review one real saved finding as a client-facing draft, trace it to the reviewed revision, and record the operator’s explicit acceptance and fixture-only scenarios. — dcf5292

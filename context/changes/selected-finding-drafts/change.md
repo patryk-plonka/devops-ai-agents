@@ -1,7 +1,7 @@
 ---
 change_id: selected-finding-drafts
 title: Draft only selected findings
-status: impl_reviewed
+status: implemented
 created: 2026-11-22
 updated: 2026-11-23
 ---
