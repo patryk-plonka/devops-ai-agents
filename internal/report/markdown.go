@@ -2,7 +2,6 @@
 package report
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -17,79 +16,20 @@ import (
 // Markdown never fetches or infers evidence. Invalid references fail publication
 // rather than allowing an unsupported finding to appear in a saved report.
 func Markdown(r health.Run) ([]byte, error) {
+	assessmentFindings, err := validateMarkdownRun(r)
+	if err != nil {
+		return nil, err
+	}
 	hasAssessments := r.SchemaVersion >= health.AssessmentSchemaVersion
-	if r.ID == "" || r.Revision < 1 || r.EndedAt == nil || hasAssessments && r.EndedAt.IsZero() {
-		return nil, errors.New("report requires a finalized snapshot")
-	}
-	switch r.Outcome {
-	case "completed", "partial", "failed", "cancelled":
-	default:
-		return nil, errors.New("invalid final outcome")
-	}
-	evidence := make(map[string]*health.Evidence, len(r.Evidence))
-	for i := range r.Evidence {
-		e := &r.Evidence[i]
-		if e.ID == "" || evidence[e.ID] != nil {
-			return nil, errors.New("invalid evidence identity")
-		}
-		evidence[e.ID] = e
-	}
-	check := func(ids []string) bool {
-		for _, id := range ids {
-			if evidence[id] == nil {
-				return false
-			}
-		}
-		return true
-	}
-	for _, f := range r.Findings {
-		if len(f.EvidenceIDs) == 0 || !check(f.EvidenceIDs) {
-			return nil, errors.New("unsupported finding")
-		}
-	}
-	for _, o := range r.Observations {
-		if !check(o.EvidenceIDs) {
-			return nil, errors.New("unresolved observation evidence")
-		}
-	}
-	for _, v := range r.Resources {
-		if !check(v.EvidenceIDs) {
-			return nil, errors.New("unresolved inventory evidence")
-		}
-	}
-	for _, g := range r.Gaps {
-		if !check(g.EvidenceIDs) {
-			return nil, errors.New("unresolved gap evidence")
-		}
-	}
 	hasAdvisor := r.SchemaVersion >= 3
-	if hasAdvisor {
-		if err := validateAdvisorReferences(r, evidence); err != nil {
-			return nil, err
-		}
-	}
-	var assessmentFindings map[string]health.Finding
-	if hasAssessments {
-		var err error
-		assessmentFindings, err = validateAssessmentReferences(r, evidence)
-		if err != nil {
-			return nil, err
-		}
-	}
 	var b strings.Builder
 	legacy := r.SchemaVersion == 1
 	if legacy {
 		b.WriteString("# Subscription Resource Health report\n\n**INCOMPLETE coverage.** Advisor, Service Health, and Azure Monitor are not checked in S-01. No resource is classified overall OK.\n\n")
 	} else if hasAssessments {
-		b.WriteString("# Subscription health report\n\n")
-		coverage := "Incomplete coverage"
-		if r.Coverage == "complete" {
-			coverage = "Complete coverage"
-		}
-		fmt.Fprintf(&b, "**%s · %s.**\n\n", coverage, r.AssessmentSummary.ResourceCounts())
-		b.WriteString("OK within the agreed checks means an inventoried resource had current Available Resource Health evidence and sufficient Service Health, Azure Monitor and Azure Advisor evidence within the saved query scopes and times. The counts cover observed inventory. A resource with a known finding and a missing check counts as unknown, with its finding shown in the assessment.\n\n")
+		b.WriteString(assessmentReportIntro(r))
 	} else {
-		b.WriteString("# Subscription health report\n\n**INCOMPLETE coverage.** No resource is classified overall OK.\n\n")
+		b.WriteString(subscriptionReportTitle + "\n\n**INCOMPLETE coverage.** No resource is classified overall OK.\n\n")
 		unchecked := []string{}
 		for name, source := range r.Sources {
 			if source.Status == "not_checked" {
@@ -101,7 +41,8 @@ func Markdown(r health.Run) ([]byte, error) {
 			fmt.Fprintf(&b, "Not checked: %s. Consult source coverage for reasons.\n\n", literal(strings.Join(unchecked, ", ")))
 		}
 	}
-	fmt.Fprintf(&b, "Run ID: %s\n\nRevision: %d\n\nExecution outcome: **%s**\n\n", literal(r.ID), r.Revision, literal(r.Outcome))
+	b.WriteString(reportIdentity(r))
+	fmt.Fprintf(&b, "\n\n"+reportOutcomePrefix+"%s**\n\n", literal(r.Outcome))
 	fmt.Fprintf(&b, "Started (UTC): %s; updated (UTC): %s; ended (UTC): %s.\n\nTool version: %s; schema version: %d; filtered values: %d.\n\n", stamp(&r.StartedAt), stamp(&r.UpdatedAt), stamp(r.EndedAt), literal(r.ToolVersion), r.SchemaVersion, r.Redactions)
 	fmt.Fprintf(&b, "Requested scope: %s.\n\n", literal(r.RequestedScope))
 	if r.Scope == nil {

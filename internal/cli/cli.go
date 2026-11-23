@@ -40,6 +40,10 @@ type App struct {
 	Render                      func(health.Run) ([]byte, error)
 }
 
+const commands = `Usage: devops-ai-agents health <check|draft> [flags]
+Use health check --help or health draft --help for command details.
+`
+
 const usage = `Usage: devops-ai-agents health check --subscription <id-or-full-name> [--non-interactive] [--debug]
 --debug: print filtered Azure SDK request, status, timing, and retry diagnostics to stderr.
 Saves Markdown and evidence with coverage and resource counts. OK applies within the saved checks and query windows.
@@ -48,9 +52,6 @@ Exit codes: 0 all collectors completed and report delivered (or help), 3 partial
 `
 
 func (a App) Run(ctx context.Context, args []string) int {
-	// SDK package initialization can enable logging from the environment. Override
-	// it before any operation, then require an explicit flag for filtered output.
-	azure.ConfigureDebugLogging(false, nil)
 	if a.In == nil {
 		a.In = strings.NewReader("")
 	}
@@ -62,12 +63,19 @@ func (a App) Run(ctx context.Context, args []string) int {
 	}
 	help := func() int { fmt.Fprint(a.Out, usage); return 0 }
 	if len(args) == 1 && isHelp(args[0]) || len(args) == 2 && args[0] == "health" && isHelp(args[1]) {
-		return help()
+		fmt.Fprint(a.Out, commands)
+		return 0
+	}
+	if len(args) >= 2 && args[0] == "health" && args[1] == "draft" {
+		return a.runDraft(ctx, args[2:])
 	}
 	if len(args) < 2 || args[0] != "health" || args[1] != "check" {
-		fmt.Fprint(a.Err, usage)
+		fmt.Fprint(a.Err, commands)
 		return 2
 	}
+	// SDK package initialization can enable logging from the environment. Override
+	// it before collection, then require an explicit flag for filtered output.
+	azure.ConfigureDebugLogging(false, nil)
 	flags := flag.NewFlagSet("health check", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	requested := flags.String("subscription", "", "subscription UUID or full name")

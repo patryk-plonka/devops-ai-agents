@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -625,7 +626,8 @@ func TestFullFlowCheckpointFailureStopsNativeCollection(t *testing.T) {
 	}
 }
 
-func TestGeneratedRunFilesAreIgnored(t *testing.T) {
+func gitWithRepositoryIgnore(t *testing.T, scratch string) func(...string) ([]byte, error) {
+	t.Helper()
 	root, err := runstore.FindRepository(".")
 	if err != nil {
 		t.Fatal(err)
@@ -636,11 +638,11 @@ func TestGeneratedRunFilesAreIgnored(t *testing.T) {
 	}
 	// An isolated Git repository exercises the real ignore rules without changing
 	// the workspace's index, commits, configuration, or existing run artifacts.
-	scratch := t.TempDir()
+	env := slices.DeleteFunc(os.Environ(), func(entry string) bool { return strings.HasPrefix(entry, "GIT_") })
 	git := func(args ...string) ([]byte, error) {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = scratch
-		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_DIR="+filepath.Join(scratch, ".git"), "GIT_WORK_TREE="+scratch, "GIT_INDEX_FILE="+filepath.Join(scratch, ".git", "index"))
+		cmd.Env = append(env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_DIR="+filepath.Join(scratch, ".git"), "GIT_WORK_TREE="+scratch, "GIT_INDEX_FILE="+filepath.Join(scratch, ".git", "index"))
 		return cmd.CombinedOutput()
 	}
 	if b, err := git("init", "--quiet", "--template="); err != nil {
@@ -649,6 +651,34 @@ func TestGeneratedRunFilesAreIgnored(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(scratch, ".gitignore"), ignore, 0600); err != nil {
 		t.Fatal(err)
 	}
+	return git
+}
+
+func TestGitIgnoreFixtureIsolatesCommonDirectory(t *testing.T) {
+	bare := t.TempDir()
+	cmd := exec.Command("git", "init", "--bare", "--quiet", "--template=", bare)
+	cmd.Env = []string{"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull}
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("init disposable bare repository: %v %s", err, b)
+	}
+	config := filepath.Join(bare, "config")
+	original, err := os.ReadFile(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_COMMON_DIR", bare)
+	git := gitWithRepositoryIgnore(t, t.TempDir())
+	if b, err := git("config", "--local", "--get", "core.bare"); err != nil || strings.TrimSpace(string(b)) != "false" {
+		t.Fatalf("expected scratch worktree config, got %q (%v)", b, err)
+	}
+	if after, err := os.ReadFile(config); err != nil || !bytes.Equal(after, original) {
+		t.Fatalf("ignore fixture changed another repository's config: %v", err)
+	}
+}
+
+func TestGeneratedRunFilesAreIgnored(t *testing.T) {
+	scratch := t.TempDir()
+	git := gitWithRepositoryIgnore(t, scratch)
 	r := health.NewRun("synthetic", "test")
 	s, err := runstore.New(scratch, &r)
 	if err != nil {

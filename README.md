@@ -36,7 +36,7 @@ The operator accepted S-03 on 2026-11-19. The
 describes the live Advisor result and the synthetic scenarios. The program never
 registers providers, repairs permissions, or falls back to another identity.
 
-Run from this repository or one of its subdirectories:
+Run these commands from the repository root.
 
 ```sh
 go run ./cmd/devops-ai-agents health check --subscription "<subscription-id-or-full-name>"
@@ -87,6 +87,9 @@ runs/                              # Git-ignored; private local output
   <UTC-timestamp>-<random-id>/
     run.json                       # normalized evidence and coverage
     report.md                      # derived from the saved revision
+    drafts/                        # editable working copies after selection
+      ticket-<finding-id>.md
+      recommendation-<finding-id>.md
 ```
 
 New runs use schema 4. Existing schema-1 through schema-3 snapshots retain their
@@ -198,18 +201,54 @@ is the recovery artifact. Forced termination or an unwritable filesystem can
 prevent the final report. S-01 was accepted on 2026-11-06 and S-02 on 2026-11-18.
 Their verification records retain the reported limits of live coverage.
 
-Exit codes from the built binary:
+### Draft selected findings
 
-| Code | Meaning |
-| --- | --- |
-| 0 | Help, or all five collectors completed and the report path was delivered. Coverage can still be incomplete. |
-| 1 | Authentication or scope-access failure, fatal execution/storage/publication/output failure, or all collectors failed without useful evidence or any completed collector |
-| 2 | Invalid input, missing/ambiguous CLI-session subscription, unsupported cloud/account, or missing repository context |
-| 3 | At least one implemented collector partial/failed, with useful evidence or a completed collector retained (including collector-local authentication failures) |
-| 130 | Interrupted execution. Finalization saves a cancelled, incomplete report when possible. If the interruption occurred during path delivery, the published pair is retained. |
+Open the published report, then copy the full `finding-…` ID for each entry you
+want to draft. From the repository root, run the command below with values from
+the report. Drafting works offline, including after the Azure CLI session ends.
+It uses a published schema 4 report under `runs/` and its sibling `run.json`,
+both at the same finalized revision. Keep the pair together.
+
+```sh
+go run ./cmd/devops-ai-agents health draft \
+  --report "runs/<run-id>/report.md" \
+  --type ticket \
+  --finding "<first-finding-id>" \
+  --finding "<second-finding-id>"
+```
+
+Use `--type recommendation` for a recommendation. Each unique selection produces
+one local Markdown file for the chosen type. Stdout lists the paths in selection
+order. Stderr identifies files that were created or already exist. The command
+validates the whole selection before creating files. After an interruption or
+delivery failure, use stderr to find saved files and repeat the same command to
+finish the selection. A repeat preserves every existing draft, including edits.
+
+Review the draft before submitting it manually. In **Local trace**, match the
+run ID and revision to the report header and the snapshot. Find the finding ID
+in `findings` and follow its supporting `ev-…` IDs in `evidence`. Follow any
+additional IDs for the target, later observations or coverage limits in the
+same snapshot. Compare the source and collection timestamps, target attribution,
+and query details under `sources`. Check that the action and scope fit the
+client and that the draft contains only details intended for the recipient.
+Keep the original report and snapshot private.
+
+### Exit codes
+
+The built executable reports the following statuses.
+
+| Code | `health check` | `health draft` |
+| --- | --- | --- |
+| 0 | Help, or all collectors completed and the report path was delivered. Coverage can still be incomplete. | Help, or all selected draft paths were delivered. |
+| 1 | Authentication or scope-access failure, fatal execution/storage/publication/output failure, or all collectors failed without useful evidence or any completed collector. | Local storage, publication, or output failure. Any published drafts are retained. |
+| 2 | Invalid input, missing or ambiguous CLI-session subscription, unsupported cloud/account, or missing repository context. | Invalid usage or selection, unsupported input, or a missing or mismatched reviewed pair. |
+| 3 | A collector was partial or failed, with useful evidence or a completed collector retained. | Reserved for collection. |
+| 130 | Interrupted. Finalization saves a cancelled, incomplete report when possible. Interruption during path delivery retains the published pair. | Interrupted. Any published drafts are retained. |
 
 `go run` itself returns a wrapper error for nonzero application codes; use the built
 binary when inspecting exact exit codes.
+
+### Development checks
 
 Development checks and exact tool pins are in
 [development-tools.md](context/foundation/development-tools.md). CI uses synthetic
